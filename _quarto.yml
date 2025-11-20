@@ -1,0 +1,49 @@
+# --- Project Configuration ---
+project:
+  type: default
+  output-dir: output
+
+# --- Execution Settings ---
+execute:
+  freeze: auto
+
+# --- PDF Format COnfiguration ---
+format:
+  pdf:
+    # --- Document Settings ---
+    documentclass: scrartcl
+    papersize: letter
+    fontsize: 12pt
+    toc: false
+    number-sections: false
+    
+    # --- Engine and Fonts Settings---
+    pdf-engine: xelatex
+    mainfont: "Source Serif Pro"
+    sansfont: "Source Sans Pro"
+    monofont: "Source Code Pro"
+    
+    # --- Layout and Styling---
+    geometry:
+      - "margin=1in"
+    colorlinks: true
+    linkcolor: "blue"
+    urlcolor: "blue"
+    
+    # --- External Files ---
+    include-in-header:
+      - "latex-header.tex"
+    keep-tex: false
+
+# --- Lua Filters ---
+filters:
+  - answer-box.lua
+
+# --- Document Language ---
+lang: en
+
+
+
+
+
+lang: en

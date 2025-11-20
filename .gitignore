@@ -1,0 +1,33 @@
+# --- Project Specific Folders and Files---
+/data/*
+!/data/README.md
+/output/*
+!/output/README.md
+
+# --- RStudio and R
+.httr-oauth
+.Rapp.history
+.RData
+.RDataTmp
+.Renviron
+.Rhistory
+.Rproj.user/
+.Ruserdata
+
+# --- Renv ---
+renv/library/
+
+# --- Quarto ---
+*.html
+*.knit.md
+*.pdf
+**/*.quarto_ipynb
+*.utf8.md
+/.quarto/
+_cache/
+_freeze/
+_quarto/
+
+# General OS files
+.DS_Store
+Thumbs.db

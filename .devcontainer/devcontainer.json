@@ -1,0 +1,27 @@
+{
+	"name": "R Project Environment",
+	// Use a pre-built R container from the rocker project
+	"image": "rocker/verse:4.5.1",
+
+	// Features to add to the dev container.
+	"features": {
+		"ghcr.io/rocker-org/devcontainer-features/quarto-cli:1": {}
+	},
+
+	// Forward the RStudio port, if you choose to run it
+	"forwardPorts": [8787],
+	
+	// VS Code extensions to install automatically
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"REditorSupport.r",
+				"quarto.quarto",
+        "github.codespaces"
+			]
+		}
+	},
+
+	// Run these commands after the container is created
+	"postCreateCommand": "R -e 'renv::restore()'"
+}

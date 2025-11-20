@@ -1,0 +1,16 @@
+% --- Required packages ---
+\usepackage{xcolor}   % For defining and using custom colors
+\usepackage{amsmath}  % For advanced math typesetting
+
+% --- Custom Colors ---
+% Defines a color named 'answerblue' with a specific RGB value.
+% You can change this color without touching the environment definition.
+\definecolor{answerblue}{rgb}{0.1, 0.1, 0.8}
+
+% --- Custom Environments ---
+% Creates a new environment called 'answerbox'.
+% \begin{answerbox} starts the color change.
+% \end{answerbox} automatically ends the color block.
+\newenvironment{answerbox}
+  {\color{answerblue}}
+  {}
