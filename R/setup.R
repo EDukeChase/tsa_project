@@ -10,7 +10,7 @@ library(knitr)              # Used for running R code in Quarto
 # --- Visualization Packages ---
 library(RColorBrewer)       # Color palettes to enable color-blind friendliness
 
-# --- Homework specific packages ---
+# --- Project specific packages ---
 
 # --- Set seed for reproducibility ---
 set.seed(5027)

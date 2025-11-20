@@ -35,15 +35,5 @@ format:
       - "latex-header.tex"
     keep-tex: false
 
-# --- Lua Filters ---
-filters:
-  - answer-box.lua
-
 # --- Document Language ---
-lang: en
-
-
-
-
-
 lang: en
