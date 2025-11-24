@@ -2,7 +2,6 @@
 title: "Timerseries Analysis Project - Part 1"
 author: "E. Duke Chase"
 date: today
-bibliography: references.bib
 ---
 
 ```{r}
@@ -30,7 +29,7 @@ library(forecast)
 ## Data
 (a) Justify (and/or provide limitations in) how your chosen data is the correct data for your question
     
-    The data is a good choice because it looks at flu-like illness prevalence throughout the country, but this does come with some limitations. Mainly, that by looking at only the national level it's likely that the forecasting will be less precise than could be achieved if we refined it down to regional or state level. Additionally, it is measuring the percentage of patients that come in to doctors with influenza-like illnesses, which is generally best, but if for some reason some other disease spiked at the same time as ILIs did, but to a greater extent than ILIs, that would make the ILI measure we have go down, even though the total number of cases went up. Another issue with the data is that ILI is defined as "fever (temperature of 100°F [37.8°C] or greater) and a cough and/or a sore throat,"[@ili_methods] so 
+    The data is a good choice because it looks at flu-like illness prevalence throughout the country, but this does come with some limitations. Mainly, that by looking at only the national level it's likely that the forecasting will be less precise than could be achieved if we refined it down to regional or state level. Additionally, it is measuring the percentage of patients that come in to doctors with influenza-like illnesses, which is generally best, but if for some reason some other disease spiked at the same time as ILIs did, but to a greater extent than ILIs, that would make the ILI measure we have go down, even though the total number of cases went up. Another issue with the data is that ILI is defined as "fever (temperature of 100°F [37.8°C] or greater) and a cough and/or a sore throat," [@ili_methods] so any increase in the prevalence of diseases with those symptoms can result in a bump. There is alternate data available that come from testing laboratories and are based on confirmed influenza cases, but there's a selection bias there since not all ILI result in a sample being sent to a lab. An additional limitation is that generally only more severe cases of ILI will result in doctor's visits, but there's not really much to be done about that other than document it.
     
 (b) Discuss any data processing/cleaning/preparation steps and/or decisions related to the identification/creation of the data you used in your analysis
     
@@ -38,7 +37,7 @@ library(forecast)
 
 (c) Provide a source for your data
 
-    The data comes from the U.S. Outpatient Influenza-like Illness Surveillance Network (ILINet), and was retrieved from the CDC's FluView portal.
+    The data comes from the U.S. Outpatient Influenza-like Illness Surveillance Network (ILINet), and was retrieved from the CDC's FluView portal [@cdc_fluview].
 
 (d) Describe key features/properties of your time series such as size, time step units, variable being studied, etc.
 
@@ -174,6 +173,6 @@ plot(ili_ts,
 ```
 
 
-
+# References
 ::: {#refs}
 :::

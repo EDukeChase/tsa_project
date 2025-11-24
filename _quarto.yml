@@ -7,6 +7,10 @@ project:
 execute:
   freeze: auto
 
+# --- Bibliography & Citations
+bibliography: references.bib
+csl: elsevier-vancouver.csl
+
 # --- PDF Format Configuration ---
 format:
   pdf:
@@ -16,7 +20,6 @@ format:
     fontsize: 12pt
     toc: false
     number-sections: false
-    cite-method: biblatex
     
     # --- Engine and Fonts Settings---
     pdf-engine: xelatex
@@ -32,6 +35,7 @@ format:
     colorlinks: true
     linkcolor: "blue"
     urlcolor: "blue"
+    link-citations: true
     
     # --- External Files ---
     include-in-header:
