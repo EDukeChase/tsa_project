@@ -2,6 +2,7 @@
 title: "Timerseries Analysis Project - Part 1"
 author: "E. Duke Chase"
 date: today
+bibliography: references.bib
 ---
 
 ```{r}
@@ -9,26 +10,170 @@ date: today
 #| include: false
 
 source(here::here("R", "setup.R"))
+
+library(forecast)
 ```
 
+# Report
+
+## Question
+(a) State your research/scientific/policy question and how answering it translates to real world decisions
+
+    How far out can a timeseries model be used to predict flu-like illness occurrence with reasonable accuracy? Has this changed significantly since COVID?
+  
+
+
+(b) Describe how time series will be used to answer it. For example: prediction, trend modeling, detection of anomalies, etc.
+
+    It will use prediction based on the time series to gauge how far out the model is useful beyond the last known data point
+
+## Data
+(a) Justify (and/or provide limitations in) how your chosen data is the correct data for your question
+    
+    The data is a good choice because it looks at flu-like illness prevalence throughout the country, but this does come with some limitations. Mainly, that by looking at only the national level it's likely that the forecasting will be less precise than could be achieved if we refined it down to regional or state level. Additionally, it is measuring the percentage of patients that come in to doctors with influenza-like illnesses, which is generally best, but if for some reason some other disease spiked at the same time as ILIs did, but to a greater extent than ILIs, that would make the ILI measure we have go down, even though the total number of cases went up. Another issue with the data is that ILI is defined as "fever (temperature of 100°F [37.8°C] or greater) and a cough and/or a sore throat,"[@ili_methods] so 
+    
+(b) Discuss any data processing/cleaning/preparation steps and/or decisions related to the identification/creation of the data you used in your analysis
+    
+    I'll have to get rid of extraneous variables that won't be used in my data, such as region (not relevant because I'm looking at the national level), or age makeup of patients. The other big issue I'll have to deal with is what to do with years that have 53 weeks instead of 52; my plan at the moment is to naively drop week 53, run my analysis, and then I can do a sensitivity analysis comparing other methods of dealing with week 53 once I have an outcome I can judge the sensitivity analysis on. Other than that, the data are pretty clean already, and I shouldn't have to create any variables to analyze.
+
+(c) Provide a source for your data
+
+    The data comes from the U.S. Outpatient Influenza-like Illness Surveillance Network (ILINet), and was retrieved from the CDC's FluView portal.
+
+(d) Describe key features/properties of your time series such as size, time step units, variable being studied, etc.
+
+    There are 1467 data points, spanning 1467 weeks across the time period of 1997 - 2025. The variable being studied is percentage of doctor's office visits that are related to influenza-like illnesses.
+  
+
+## Statistical Plan
+(a) Provide a brief a priori analytical plan for your project. What pre-processing, visualizing, modeling steps, etc. will you conduct? (Note: what you do for item d. in the Data component section above should be described here as well)
+
+    Start out with pre-processing indicated before, basic plots of ILI percentage over time, check for stationarity, decompose the series and visualize trend, seasonality, and remaining noise. From there I'll use ACF and PACF to identify likely candidates for p, P, d, D, q, and Q, and use them for a SARIMA model, since there is usually a strong seasonal component to the occurrence of flu-like diseases. I could also run a Holt-Winters model as a comparison, and use AIC to choose the better model.
+    
+(b) Explain how the steps in your plan build a framework for making a robust conclusion for your research question. That is, how does your plan give a complete answer to your question?
+
+    To get a good idea of the reliable forecast horizon, I'll use a train/test split to be able to see how my model performs on real world data. To determine how resilient SARIMA modeling is to shocks, I will actually have two different models: one that will be a pre-COVID19 control model that uses the years before 2019 as training data and tests on 2019, and then a complete model that uses the years before 2024 as training data and tests on 2024. 
+    
+    For both models, I'll calculate the RMSE for each week of the forecast and comparit to a naive baseline that just assumes any given week will be the same as the same week in the previous year. Wherever the SARIMA error becomes worse than the naive error, that's the limit of my effective forecasting window. I can then compare this window in 2019 vs 2024 and quantify how much the shock of COVID19 affected model performance.
+
+## Exploratory Data Analysis
+(a) Provide any summary or other statistics/details relevant to your analytical plan and those needed to understand your final conclusions. E.g. any descriptive statistics of your time series or any feature (such as a pattern or trend) of your time series
+(b) Provide and discuss at least one exploratory visualization of your time series. For example, how the visualization guided/motivated any decisions about how to use/model the data or provides insights into your question’s answer
+
+## Statistical Analysis
+(a)Estimate and interpret, in the context of your question, at least one non-ARIMA model that we used in class prior to ARIMA. For example, any of the smoothers or any of the mathematical models such as linear, exponential, polynomial, etc. Justify an related assumptions for these models (if there are any). In the Statistical Plan section you should motivate your choice in the sense of what it lets you learn about your time series related to your project goals
+(b) Estimate an ARIMA model for your time series
+  (i) Justify how, and that, you met any assumptions needed for an ARIMA model and explain why they must be met for ARIMA to be valid. Examples include stationarity, stable variance, etc. Examples could also include showing there is informative autocorrelation in the time series
+  (ii) If there was seasonality, justify your SARIMA choices
+  (iii) Justify your approach to choosing p, d, and q, and report each step/phase of this approach when applied to the data. For example, if you will systematically consider multiple models, describe this process and then provide results related to the series of candidate models. Alternatively, if you have a way to choose a single p, d, and q before estimating any models, explain how you will make this choice and why it is likely to lead to a reasonable ARIMA model. There are other approaches such as citing expert opinion or even doing something entirely new (that you can scientifically/statistically justify)
+  (iv) Provide and interpret ACF and PACF plots
+  (v) Justify your metric(s) for choosing a best/final model
+  (vi) Provide and interpret the statistical significance of any AR or MA coefficients in your final estimated model
+  (vii) Analyze the residuals to validate your final ARIMA model. Explain why each check you are performing with the residuals is necessary
+
+## Final Model and Conclusions
+(a) Provide an equation for your final estimated model and explain all parameters and variables in this equation
+(b) Use the model and/or its statistical output to answer your research question. Provide both a statistical answer (e.g. the calculated prediction interval was _____) and a practical answer (e.g. implications of your conclusion/answer/inference in the real world domain of your question)
+(c) Discuss the strengths and limitations of ARIMA for your data/question. Note: the final project for our class is an extension of this project where you will compare your ARIMA model to other models from other approaches; thus, this could be a reasonable place to start motivating properties you would ideally like in different models
+
+
+# Data pre-processing and cleaning
+
 ```{r}
+#| label: load_process
+
 # Load data
-ili_raw <- read.csv(here("data", "ILINet.csv"), header = TRUE, skip = 1)
+ili_raw <- read.csv(here("data", "ILINet.csv"),
+                    header = TRUE,
+                    skip = 1)
 
 # Clean data
-ili_clean <- ili_raw |> 
+ili_clean <- ili_raw |>
   # Remove rows with missing data or no unique data
   select(
-    -REGION.TYPE,           # All are "National"
-    -REGION,                # All are "X"
-    -X.UNWEIGHTED.ILI,      # Raw, not weighted by state size
-    -contains("AGE")        # Two of the demographic breakdowns are empty
-    ) |> 
-  rename(
-    year = YEAR,
-    week = WEEK,
-    weighted_ili = X..WEIGHTED.ILI,
-    
+    -REGION.TYPE,         # All are "National"
+    -REGION,              # All are "X"
+    -X.UNWEIGHTED.ILI,    # Raw, not weighted by state size
+    -contains("AGE"),     # Two of the demographic breakdowns are empty
+    -ILITOTAL,            # Raw values 
+    -NUM..OF.PROVIDERS,   # Raw values
+    -TOTAL.PATIENTS       # Raw values
+  ) |>
+  
+  # Standardize variable naming
+  rename(year = YEAR, week = WEEK, ili_w = X..WEIGHTED.ILI) |>  
+  
+  # Modify to work two-year spanning flu-seasons (start week is 40)
+  mutate(
+    flu_season = if_else(week >= 40, year, year - 1),
+    season_week = if_else(week >= 40, week - 39, week + 13),
+    season_label = paste0(flu_season, "-", flu_season + 1
+    )
   )
 ```
 
+One issue I'll have to deal with right off the bat is that some years have 53 weeks and some have 52. For simplicity of analysis I'm going to start off by just dropping the 53rd week from years that have it, but I will go back and do a sensitivity analysis comparing a few methods (imputing 53rd weeks for other years, averaging the 53rd week across the 52nd and 1st of next year, etc.).
+
+```{r}
+#| label: week-53-problem
+
+# Create working dataset for seasonality check
+ili_seasonal <- ili_clean |>
+  # Drop 53rd week to standardize length (naive approach, revisit later)
+  filter(week <= 52) |> 
+  arrange(year, week)
+
+# Create ts object
+ili_ts <- ts(
+  ili_seasonal$ili_w,
+  start = c(ili_seasonal$year[1], ili_seasonal$week[1]),
+  frequency = 52
+)
+
+plot(ili_ts, 
+     main = "Weighted ILI Activity", 
+     ylab = "Weighted ILI %")
+```
+
+Looking at this plot, it is apparent that until about 2003, data were only collected during flu season and not over the summer months, so those flu seasons will be excluded from the analysis.
+
+```{r}
+#| label: find-zero-weeks
+
+zero_check <- ili_seasonal |> 
+  group_by(flu_season) |> 
+  summarize(
+    weeks_with_zero = sum(ili_w == 0, na.rm = TRUE),
+    min_ili = min(ili_w, na.rm = TRUE),
+    total_weeks = n()
+  )
+
+print(zero_check, n = 8)
+```
+
+Based on this output, 2002 - 2003 is the first flu season with no missing weeks, so I will discard all years before that.
+
+```{r}
+#| label: drop-pre-2002-season
+
+# Drop data before 2003
+ili_df <- ili_seasonal |> 
+  filter(flu_season >= 2002) |> 
+  arrange(year, week)
+
+# Overwrite previous ts object
+ili_ts <- ts(
+  ili_df$ili_w,
+  start = c(2002, 40),
+  frequency = 52
+)
+
+plot(ili_ts, 
+     main = "Weighted ILI Activity (Cleaned)", 
+     ylab = "Weighted ILI %")
+```
+
+
+
+::: {#refs}
+:::

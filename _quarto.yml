@@ -7,7 +7,7 @@ project:
 execute:
   freeze: auto
 
-# --- PDF Format COnfiguration ---
+# --- PDF Format Configuration ---
 format:
   pdf:
     # --- Document Settings ---
@@ -16,16 +16,19 @@ format:
     fontsize: 12pt
     toc: false
     number-sections: false
+    cite-method: biblatex
     
     # --- Engine and Fonts Settings---
     pdf-engine: xelatex
     mainfont: "Source Serif Pro"
     sansfont: "Source Sans Pro"
     monofont: "Source Code Pro"
+    monofontoptions: 
+      - Scale=0.85
     
     # --- Layout and Styling---
     geometry:
-      - "margin=1in"
+      - "margin=0.75in"
     colorlinks: true
     linkcolor: "blue"
     urlcolor: "blue"
