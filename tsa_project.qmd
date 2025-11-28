@@ -8,8 +8,10 @@ date: today
 #| label: setup
 #| include: false
 
+# General settings and ancillary packages
 source(here::here("R", "setup.R"))
 
+# Project libraries
 library(forecast)
 library(tseries)
 ```
@@ -19,7 +21,7 @@ library(tseries)
 ## Question
 (a) State your research/scientific/policy question and how answering it translates to real world decisions
 
-How far out can a timeseries model be used to predict flu-like illness occurrence with reasonable accuracy? Has this changed significantly since COVID?
+How far out can a timeseries model be used to predict flu-like illness occurrence with reasonable accuracy? Has this changed significantly since COVID? This question could be useful in real world decisions because it could be used in healthcare environments for predicting upcoming needs due to flu season, like staffing, stocking vaccinations, medication supplies, etc.
   
 
 
@@ -42,7 +44,7 @@ The data comes from the U.S. Outpatient Influenza-like Illness Surveillance Netw
 
 (d) Describe key features/properties of your time series such as size, time step units, variable being studied, etc.
 
-There are 1467 data points, spanning 1467 weeks across the time period of 1997 - 2025. The variable being studied is percentage of doctor's office visits that are related to influenza-like illnesses.
+There are 1467 weekly measurements spanning the time period of 1997 - 2025. The variable being studied is percentage of doctor's office visits that are related to influenza-like illnesses.
   
 
 ## Statistical Plan
@@ -261,10 +263,10 @@ In the main figure we can see that for most flu seasons there's a peak between 1
 Around the main plot I've highlighted a few flu seasons that had interesting characteristics. Subplots (a), (b) and (c) were all heavy flu years, with (b) reflecting the H1N1 (swine flu) epidemic; swine flu had a very early start in the year compared to typical flu variants, and is also the only time I've experienced hallucinations due to fever. Subplots (d) and (g) were interesting because they have two or more peaks during the season. Lastly, subplots (e) and (f) are especially indicative of the effects COVID19 had on flu occurrence. Sublot (e) occurred during the height of non-pharmaceutical interventions intended to slow the spread (masking, social distancing, etc.)[@covid_npi], showing that there was almost no detectable flu season as a result. Subplot (f) occurred soon after the vast majority of state-level interventions had been lifted[@covid_npi], and peaked significantly earlier in the year than typical, possibly lending credence to the idea of immune debt [@immune_debt] causing people to be more vulnerable to infection after a period of low exposure.
 
 ```{r}
-adf.test(ili_ts, alternative = c("stationary"))
-kpss.test(ili_ts, null = c("Level"))
+adf.test(ili_ts, alternative = "stationary")
+kpss.test(ili_ts, null = "Level")
 ```
-Both the Augmented Dickey-Fuller and KPSS tests indicate that the data are stationary, so that is nice to start off with.
+The Augmented Dickey-Fuller test indicates that the data are stationary, but the KPSS test indicates that there is a trend. This isn't super surprising since flu rates are known to be very seasonal
 
 ```{r}
 #| label: acf-pacf
@@ -467,11 +469,60 @@ ggplot(results_long, aes(x = window, y = Value, color = Metric)) +
   )
 ```
 
+# Model Prep
+```{r}
+#| label: train-test-split
+
+# Subset the training and test datasets
+# 2002-2003 through 2023-2024 seasons
+train_df <- ili_df |> 
+  filter(flu_season < 2024) |> 
+  arrange(year, week)
+
+# Just the 2024-2025 season
+test_df <- ili_df |> 
+  filter(flu_season == 2024) |> 
+  arrange(year, week)
+
+# Convert to time series objects
+train_ts <- ts(
+  train_df$ili_w,
+  start = c(train_df$year[1], train_df$week[1]),
+  frequency = 52
+)
+
+test_ts <- ts(
+  test_df$ili_w,
+  start = c(test_df$year[1], test_df$week[1]),
+  frequency = 52
+)
+```
+
+# Seasonal Naive Model
 
 
 
+# Holt-Winters Model
+
+```{r}
+#| label: hw-model
+
+hw_model <- HoltWinters(train_ts, seasonal = "additive")
+hw_forecast <- forecast(hw_model, h = length(test_ts))
+
+autoplot(hw_forecast, include = 102) +
+  autolayer(test_ts, series = "Actual (2024-2025)", size = 1) +
+  scale_color_manual(values = c("Actual (2024-2025)" = "black", "Predicted" = "#0072B2")) +
+labs(
+  title = "Holt-Winters Forecast Validation",
+  subtitle = "Training: 2002-2023 | Test: 2024-2025 Flu Season",
+  y = "Weighted ILI%",
+  x = "Year"
+)
+```
 
 
+# SARIMA Model
 
 
 
