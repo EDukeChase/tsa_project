@@ -1,0 +1,6 @@
+---
+title: "Assessing Effective Forecast Horizons for Weekly Influenza-Like Illness Using Time Series Models"
+subtitle: "[MATH-5027 Midterm Project GitHub Repo](https://github.com/EDukeChase/tsa_project)"
+author: "E. Duke Chase"
+date: today
+---
