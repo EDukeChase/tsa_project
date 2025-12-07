@@ -4,6 +4,7 @@ author: "E. Duke Chase"
 date: today
 ---
 
+# Load Packages
 ```{r}
 #| label: setup
 #| include: false
@@ -21,42 +22,55 @@ library(tseries)
 ## Question
 (a) State your research/scientific/policy question and how answering it translates to real world decisions
 
+\color{blue}
 How far out can a timeseries model be used to predict flu-like illness occurrence with reasonable accuracy? Has this changed significantly since COVID? This question could be useful in real world decisions because it could be used in healthcare environments for predicting upcoming needs due to flu season, like staffing, stocking vaccinations, medication supplies, etc.
-  
-
+\color{black}
 
 (b) Describe how time series will be used to answer it. For example: prediction, trend modeling, detection of anomalies, etc.
 
+\color{blue}
 It will use prediction based on the time series to gauge how far out the model is useful beyond the last known data point
+\color{black}
 
 ## Data
 (a) Justify (and/or provide limitations in) how your chosen data is the correct data for your question
-    
+
+\color{blue}
 The data is a good choice because it looks at flu-like illness prevalence throughout the country, but this does come with some limitations. Mainly, that by looking at only the national level it's likely that the forecasting will be less precise than could be achieved if we refined it down to regional or state level. Additionally, it is measuring the percentage of patients that come in to doctors with influenza-like illnesses, which is generally best, but if for some reason some other disease spiked at the same time as ILIs did, but to a greater extent than ILIs, that would make the ILI measure we have go down, even though the total number of cases went up. Another issue with the data is that ILI is defined as "fever (temperature of 100°F [37.8°C] or greater) and a cough and/or a sore throat," [@ili_methods] so any increase in the prevalence of diseases with those symptoms can result in a bump. There is alternate data available that come from testing laboratories and are based on confirmed influenza cases, but there's a selection bias there since not all ILI result in a sample being sent to a lab. An additional limitation is that generally only more severe cases of ILI will result in doctor's visits, but there's not really much to be done about that other than document it.
-    
+\color{black}
+
 (b) Discuss any data processing/cleaning/preparation steps and/or decisions related to the identification/creation of the data you used in your analysis
-    
+
+\color{blue}    
 I'll have to get rid of extraneous variables that won't be used in my data, such as region (not relevant because I'm looking at the national level), or age makeup of patients. The other big issue I'll have to deal with is what to do with years that have 53 weeks instead of 52; my plan at the moment is to naively drop week 53, run my analysis, and then I can do a sensitivity analysis comparing other methods of dealing with week 53 once I have an outcome I can judge the sensitivity analysis on. Other than that, the data are pretty clean already, and I shouldn't have to create any variables to analyze.
+\color{black}
 
 (c) Provide a source for your data
 
+\color{blue}
 The data comes from the U.S. Outpatient Influenza-like Illness Surveillance Network (ILINet), and was retrieved from the CDC's FluView portal [@cdc_fluview].
+\color{black}
 
 (d) Describe key features/properties of your time series such as size, time step units, variable being studied, etc.
 
+\color{blue}
 There are 1467 weekly measurements spanning the time period of 1997 - 2025. The variable being studied is percentage of doctor's office visits that are related to influenza-like illnesses.
-  
+\color{black}
 
 ## Statistical Plan
 (a) Provide a brief a priori analytical plan for your project. What pre-processing, visualizing, modeling steps, etc. will you conduct? (Note: what you do for item d. in the Data component section above should be described here as well)
 
+\color{blue}
 Start out with pre-processing indicated before, basic plots of ILI percentage over time, check for stationarity, decompose the series and visualize trend, seasonality, and remaining noise. From there I'll use ACF and PACF to identify likely candidates for p, P, d, D, q, and Q, and use them for a SARIMA model, since there is usually a strong seasonal component to the occurrence of flu-like diseases. I will also estimate a Holt-Winters model to serve as a baseline comparison for the SARIMA model, and use AIC and RMSE to compare them.
-    
+\color{black}
+
 (b) Explain how the steps in your plan build a framework for making a robust conclusion for your research question. That is, how does your plan give a complete answer to your question?
 
+\color{blue}
 To get a good idea of the reliable forecast horizon, I'll use a train/test split to be able to see how my model performs on real world data. To determine how resilient SARIMA modeling is to shocks, I will actually have two different models: one that will be a pre-COVID19 control model that uses the years before 2019 as training data and tests on 2019, and then a complete model that uses the years before 2024 as training data and tests on 2024. 
     
 For both models, I'll calculate the RMSE for each week of the forecast and comparit to a naive baseline that just assumes any given week will be the same as the same week in the previous year. Wherever the SARIMA error becomes worse than the naive error, that's the limit of my effective forecasting window. I can then compare this window in 2019 vs 2024 and quantify how much the shock of COVID19 affected model performance.
+\color{black}
 
 ## Exploratory Data Analysis
 (a) Provide any summary or other statistics/details relevant to your analytical plan and those needed to understand your final conclusions. E.g. any descriptive statistics of your time series or any feature (such as a pattern or trend) of your time series
@@ -469,6 +483,220 @@ ggplot(results_long, aes(x = window, y = Value, color = Metric)) +
   )
 ```
 
+
+# Exploratory Analysis Redone
+```{r}
+#| label: assess_variance-transformations
+
+# Log transform data
+ili_log_ts <- log(ili_ts)
+
+# Get optimal lambda for BoxCox transformation
+lambda_opt <- BoxCox.lambda(ili_ts, method = "guerrero")
+ili_bc <- BoxCox(ili_ts, lambda_opt)
+
+
+# Raw
+p1 <- autoplot(ili_ts) + 
+  ggtitle("Raw Data") + theme_minimal()
+
+# Log Transform (Lambda = 0)
+p2 <- autoplot(log(ili_ts)) + 
+  ggtitle("Log Transformed (Lambda = 0)") + theme_minimal()
+
+# Auto Box-Cox Transform
+p3 <- autoplot(ili_bc) + 
+  ggtitle(paste("Auto Box-Cox (Lambda =", round(lambda_opt, 2), ")")) + 
+  theme_minimal()
+
+# Compare plots
+p1 / p2 / p3
+```
+With $\lambda = 0.04" for the BoxCox transformation, I'll just use the log transformed data because it is more interpretable and essentially the same. That $\lambda$ parameter is also tuned to the existing data, so a more generalized transformation like log might work better on out-of-sample data.
+
+```{r}
+#| label: eda_decomposition
+
+# Periodic decomposition
+decomp_periodic <- stl(ili_log_ts, s.window = "periodic")
+rem_periodic <- decomp_periodic$time.series[, "remainder"]
+
+autoplot(rem_periodic) +
+  labs(
+    title = "Remainder: Periodic Seasonality",
+    y = "Remainder"
+  )
+```
+Amplitude varies, but there is a pretty regular pattern of spikes in the data pointing to slight shifts in seasonality. Will evaluate different options for the `s.window` parameter of the `stl()` function, because that alters the span of the loess window for seasonality extraction.
+
+```{r}
+#| label: tuning_s-window
+
+# --- 1. Calculate the Baseline (Periodic) Metrics First ---
+decomp_periodic <- stl(ili_boxcox_ts, s.window = "periodic")
+rem_periodic    <- decomp_periodic$time.series[, "remainder"]
+
+periodic_acf <- acf(rem_periodic, lag.max = 52, plot = FALSE)$acf[53]
+periodic_var <- var(rem_periodic)
+
+# Define the exact label strings we want to use
+label_acf <- "Seasonal Leakage (ACF of Remainder @ Lag 52)"
+label_var <- "Unexplained Variance (Noise Level)"
+
+# Create a dataframe for the reference lines
+baseline_data <- data.frame(
+  Metric_Code = c("ACF_Lag52", "Remainder_Var"),
+  Value       = c(periodic_acf, periodic_var)
+) |>
+  mutate(
+    Metric_Label = case_when(
+      Metric_Code == "ACF_Lag52" ~ label_acf,
+      Metric_Code == "Remainder_Var" ~ label_var
+    ),
+    # Force the order: Variance first, then ACF
+    Metric_Label = factor(Metric_Label, levels = c(label_var, label_acf))
+  )
+
+# --- 2. Run the Grid Search ---
+windows_to_test <- seq(7, 51, by = 2)
+degrees_to_test <- c(0, 1)
+
+tuning_grid <- expand.grid(
+  window = windows_to_test,
+  degree = degrees_to_test
+)
+
+tuning_grid$ACF_Lag52 <- NA
+tuning_grid$Remainder_Var <- NA
+
+for(i in 1:nrow(tuning_grid)) {
+  win <- tuning_grid$window[i]
+  deg <- tuning_grid$degree[i]
+  
+  decomp <- stl(ili_boxcox_ts, s.window = win, s.degree = deg)
+  remainder <- decomp$time.series[, "remainder"]
+  
+  tuning_grid$ACF_Lag52[i] <- acf(remainder, lag.max = 52, plot = FALSE)$acf[53]
+  tuning_grid$Remainder_Var[i] <- var(remainder)
+}
+
+# --- 3. Reshape & Plot ---
+results_long <- tuning_grid |>
+  mutate(degree = as.factor(degree)) |>
+  pivot_longer(cols = c("ACF_Lag52", "Remainder_Var"), 
+               names_to = "Metric_Code", 
+               values_to = "Value") |>
+  mutate(
+    Metric_Label = case_when(
+      Metric_Code == "ACF_Lag52" ~ label_acf,
+      Metric_Code == "Remainder_Var" ~ label_var
+    ),
+    # Force the order: Variance first, then ACF
+    Metric_Label = factor(Metric_Label, levels = c(label_var, label_acf))
+  )
+
+ggplot(results_long, aes(x = window, y = Value, color = degree, group = degree)) +
+  
+  # 1. Add the Periodic Baseline
+  geom_hline(data = baseline_data, aes(yintercept = Value, linetype = "Periodic Baseline"), 
+             color = "black", size = 0.6) +
+  
+  # 2. Add the Zero Line (Only relevant for ACF)
+  geom_hline(yintercept = 0, color = "grey80", size = 0.3) +
+  
+  # 3. Draw the Tuning Curves
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  
+  # Facet: 1 column, so Variance will be Top (Level 1) and ACF Bottom (Level 2)
+  facet_wrap(~Metric_Label, scales = "free_y", ncol = 1) +
+  
+  scale_x_continuous(breaks = seq(7, 51, by = 4)) +
+  scale_color_manual(values = c("0" = "#D95F02", "1" = "#1B9E77"), 
+                     name = "Seasonal Degree",
+                     labels = c("0 (Constant)", "1 (Linear)")) +
+  
+  scale_linetype_manual(name = "Reference", values = c("Periodic Baseline" = "dashed")) +
+  
+  theme_minimal() +
+  labs(
+    title = "STL Tuning: Optimizing Seasonal Parameters",
+    subtitle = "Dashed black line represents the standard 'Periodic' decomposition baseline.",
+    x = "Seasonal Window (s.window)",
+    y = "Value"
+  )
+```
+
+To try and improve the decomposition, I performed parameter tuning comparing locally constant (`s.degree = 0`) and locally linear (`s.degree = 1`) seasonal fitting across various loess smoothing window sizes against the static periodic baseline. 
+
+The top plot showed that the linear method (`s.degree = 1`) consistently had the lowest unexplained variance compared to the periodic baseline and the constant method for every window size. This makes sense since we don't expect flu season intensity to be constant across years. Based on the bottom plot, the loess window size that minimizes the ACF at lag 52 (one season earlier), and removes the small amount of bias that is present in the baseline periodic version.
+
+```{r}
+#| label: final-decomp-comparison
+#| fig-height: 6
+
+library(forecast)
+library(patchwork)
+library(ggplot2)
+
+# 1. The "Naive" Baseline (Periodic)
+# We use this to show what "bad" looks like
+decomp_periodic <- stl(ili_boxcox_ts, s.window = "periodic")
+rem_periodic <- decomp_periodic$time.series[, "remainder"]
+
+# 2. The "Optimized" Model
+# Based on your tuning: Window 17, Linear Degree
+decomp_optimized <- stl(ili_boxcox_ts, s.window = 17, s.degree = 1)
+rem_optimized <- decomp_optimized$time.series[, "remainder"]
+
+# 3. Plot them together
+p1 <- autoplot(rem_periodic) +
+  theme_minimal() +
+  labs(
+    title = "Remainder: Periodic Seasonality",
+    subtitle = "Standard assumption (Constant shape). Note the rhythmic spikes.",
+    y = "Remainder"
+  )
+
+p2 <- autoplot(rem_optimized) +
+  theme_minimal() +
+  labs(
+    title = "Remainder: Optimized Seasonality (Window=17, Linear)",
+    subtitle = "Tuned parameters. Variance is reduced and seasonal leakage is minimized.",
+    y = "Remainder"
+  )
+
+# Stack them
+p1 / p2
+```
+
+While there isn't a super noticable visual improvement in the remainders after optimization, it is still better than the static periodic decomposision based on a few metrics. The optimized model doesn't force the seasonality to be identical every season, which allows it to better capture the variations that are seen in messy biological processes like the flu, and reduces the amount of remainder that results just from forcing static seasonality on the pattern.
+
+```{r}
+# 1. Baseline: Periodic (Constant)
+decomp_periodic <- stl(ili_boxcox_ts, s.window = "periodic")
+var_periodic <- var(decomp_periodic$time.series[, "remainder"])
+
+# 2. Intermediate: Optimized Window but Degree 0 (Constant)
+decomp_deg0 <- stl(ili_boxcox_ts, s.window = 17, s.degree = 0)
+var_deg0 <- var(decomp_deg0$time.series[, "remainder"])
+
+# 3. Final: Optimized Window and Degree 1 (Linear)
+decomp_final <- stl(ili_boxcox_ts, s.window = 17, s.degree = 1)
+var_final <- var(decomp_final$time.series[, "remainder"])
+
+# 4. Calculate Reduction Percentages
+pct_reduction_total <- (var_periodic - var_final) / var_periodic * 100
+pct_reduction_step2 <- (var_deg0 - var_final) / var_deg0 * 100
+
+# Print the "Scoreboard"
+print(paste("Periodic Variance:", round(var_periodic, 5)))
+print(paste("Optimized Variance:", round(var_final, 5)))
+print(paste("Total Reduction:", round(pct_reduction_total, 2), "%"))
+```
+
+
+
 # Model Prep
 ```{r}
 #| label: train-test-split
@@ -500,6 +728,24 @@ test_ts <- ts(
 
 # Seasonal Naive Model
 
+```{r}
+#| label: seasonal-naive_model
+
+# Build seasonally naive model
+snaive_model <- snaive(train_ts, h = length(test_ts))
+
+autoplot(snaive_model, include = 104) +
+  autolayer(test_ts, series = "Actual (2024-2025)", size = 1) +
+  scale_color_manual(values = c("Actual (2024-2025)" = "black",
+                                "Predicted" = "#D55E00")) +
+  theme_minimal() + 
+  labs(
+    title = "Seasonal Naive Forecast Validation",
+    substitle = "Logic: Prediction = Observation from same week in previous year.",
+    y = "Weighted ILI%",
+    x = "Year"
+  )
+```
 
 
 # Holt-Winters Model
@@ -522,7 +768,95 @@ labs(
 ```
 
 
+
+
+
 # SARIMA Model
+
+```{r}
+# 1. Check Seasonal Differencing Requirements (D)
+# We test using the standard OCSB test and the STL-based measure
+print("--- Seasonal Differencing Tests ---")
+print(paste("nsdiffs (OCSB):", nsdiffs(ili_ts, test = "ocsb")))
+print(paste("nsdiffs (SEAS):", nsdiffs(ili_ts, test = "seas")))
+
+# 2. Check Trend Differencing Requirements (d)
+# We test using KPSS (null = stationary) vs ADF (null = non-stationary)
+# Note: We run this on the seasonally adjusted (or just raw) data to check trend
+print("--- Trend Differencing Tests ---")
+print(paste("ndiffs (KPSS):", ndiffs(ili_ts, test = "kpss")))
+print(paste("ndiffs (ADF):",  ndiffs(ili_ts, test = "adf")))
+
+# 3. Explicit Unit Root Tests (to show the p-values)
+# This highlights the conflict: ADF might say "Stationary" (p < 0.05) 
+# while KPSS says "Non-Stationary" (p < 0.05)
+print("--- Unit Root Test Details ---")
+adf_res <- adf.test(ili_ts)
+kpss_res <- kpss.test(ili_ts, null = "Trend")
+
+print(paste("ADF p-value:", round(adf_res$p.value, 4), 
+            "-> Suggests", ifelse(adf_res$p.value < 0.05, "d=0", "d=1")))
+print(paste("KPSS p-value:", round(kpss_res$p.value, 4), 
+            "-> Suggests", ifelse(kpss_res$p.value < 0.05, "d=1", "d=0")))
+```
+
+```{r}
+#| label: sarima-grid-search
+
+sarima_thorough <- auto.arima(train_ts, stepwise = FALSE, approximation = FALSE,
+                              lambda = "auto", trace = TRUE)
+
+print(sarima_thorough)
+```
+
+```{r}
+#| label: sarima-comparison
+
+# Load models to compare
+sarima_d0_D0 <- readRDS(here("data", "sarima_d0_D0.rds"))
+sarima_d0_D1 <- readRDS(here("data", "sarima_d0_D1.rds"))
+sarima_d1_D0 <- readRDS(here("data", "sarima_d1_D0.rds"))
+sarima_d1_D1 <- readRDS(here("data", "sarima_d1_D1.rds"))
+
+# Already have lowest AICc model for each of those differencing paremeters
+# Not valid to just compare their AICcs against each other, so will compare
+# their RMSE performance on the test dataset (2024-2025 flu season)
+metrics_d0_D0 <- accuracy(forecast(sarima_d0_D0, h = 52), test_ts)
+metrics_d0_D1 <- accuracy(forecast(sarima_d0_D1, h = 52), test_ts)
+metrics_d1_D0 <- accuracy(forecast(sarima_d1_D0, h = 52), test_ts)
+metrics_d1_D1 <- accuracy(forecast(sarima_d1_D1, h = 52), test_ts)
+
+sarima_comparison_results <- tibble(
+  "Model name" = c("Stationary", "Seasonal Diff",
+           "Trend Diff", "Double Diff"),
+  # Extract ARIMA parameters
+  p = c(sarima_d0_D0$arma[1], sarima_d0_D1$arma[1], sarima_d1_D0$arma[1], sarima_d1_D1$arma[1]),
+  d = c(sarima_d0_D0$arma[6], sarima_d0_D1$arma[6], sarima_d1_D0$arma[6], sarima_d1_D1$arma[6]),
+  q = c(sarima_d0_D0$arma[2], sarima_d0_D1$arma[2], sarima_d1_D0$arma[2], sarima_d1_D1$arma[2]),
+  P = c(sarima_d0_D0$arma[3], sarima_d0_D1$arma[3], sarima_d1_D0$arma[3], sarima_d1_D1$arma[3]),
+  D = c(sarima_d0_D0$arma[7], sarima_d0_D1$arma[7], sarima_d1_D0$arma[7], sarima_d1_D1$arma[7]),
+  Q = c(sarima_d0_D0$arma[4], sarima_d0_D1$arma[4], sarima_d1_D0$arma[4], sarima_d1_D1$arma[4]),
+  
+  # Extract RMSE from metrics above
+  "RMSE (In-Sample)" = c(
+    round(metrics_d0_D0["Training set", "RMSE"], 3), 
+    round(metrics_d0_D1["Training set", "RMSE"], 3),
+    round(metrics_d1_D0["Training set", "RMSE"], 3), 
+    round(metrics_d1_D1["Training set", "RMSE"], 3)
+  ),
+  
+  "RMSE (Out-of-Sample)" = c(
+    round(metrics_d0_D0["Test set", "RMSE"], 3), 
+    round(metrics_d0_D1["Test set", "RMSE"], 3),
+    round(metrics_d1_D0["Test set", "RMSE"], 3), 
+    round(metrics_d1_D1["Test set", "RMSE"], 3)
+  )
+)
+
+
+print(sarima_comparison_results)
+```
+
 
 
 
