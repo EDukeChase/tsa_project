@@ -10,7 +10,8 @@ date: today
 #| include: false
 
 # General settings and ancillary packages
-source(here::here("R", "setup.R"))
+source("R/setup.R")
+source("R/save_plot.R")
 
 # Project libraries
 library(forecast)
@@ -70,9 +71,11 @@ ili_ts <- ts(
   frequency = 52
 )
 
-plot(ili_ts, 
+raw_data_plot <- plot(ili_ts, 
      main = "Weighted ILI Activity", 
      ylab = "Weighted ILI %")
+raw_data_plot
+save_plot(raw_data_plot, "raw_data", target = "output/figures")
 ```
 
 Looking at this plot, it is apparent that until about 2003, data were only collected during flu season and not over the summer months, so those flu seasons will be excluded from the analysis.
@@ -182,12 +185,15 @@ AAAD
 EFGH
 "
 
-p_main + p1 + p2 + p3 + p4 + p5 + p6 + p7 +
+flu_overview <- p_main + p1 + p2 + p3 + p4 + p5 + p6 + p7 +
   plot_layout(design = layout_design) +
   plot_annotation(
     title = "Weighted ILI %: Historical Overview & Key Anomalies",
-    subtitle = "Main plot (Left) shows the full historical range. Subplots (Right/Bottom) isolate notable seasons."
+    subtitle = "Main plot (Left) shows the full historical range.\nSubplots (Right/Bottom) isolate notable seasons."
     )
+
+flu_overview
+save_plot(flu_overview, "flu_overview", format = c("png", "svg"), target = "output/figures")
 ```
 
 

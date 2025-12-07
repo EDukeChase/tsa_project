@@ -65,21 +65,66 @@ For both models, I'll calculate the RMSE for each week of the forecast and compa
 
 ## Exploratory Data Analysis
 (a) Provide any summary or other statistics/details relevant to your analytical plan and those needed to understand your final conclusions. E.g. any descriptive statistics of your time series or any feature (such as a pattern or trend) of your time series
+
+\color{blue}
+The dataset did not include any data during the flu off-season (weeks 21-39 of the year) until 2003, when partial monitoring began [@CDCExpandMonitoring], and off-season reporting slowly increased until it became normal in the 2005-2006 flue season, at which point data for children and adults began routinely being collected year round [@CDCSum03]. Data included 5 years with 53 weeks instead of 52, so the 53rd weeks were dropped from the analysis (somewhat common solution to the problem based on what I've read), which obviously biases the data and introduces some mismatch in terms of year-over-year alignment. For the analysis I began the series at the onset of the 2002-03 flu season (week 40 of 2002), and modeled it as a weekly time series with a frequency of 52 weeks. There is strong annual seasonality with a relatively consistent trend of peaking in severity around week 55 (15 weeks into the flu season) although there is substantial variability in the timing and intensity of the peaks. There is a much more consistent trend of falling off to very low levels around 1-2% around week 18 (30 weeks into the flu season). Several seasons show significant abnormalities in either intensity or timing of peak flu load.
+
+Stationarity diagnostics are somewhat mixed, with an ADF test suggesting stationarity (p = 0.01), a KPSS test for stationarity with trend failing to reject stationarity (p = 0.10), while a KPSS test for level stationarity provided evidence against stationarity (p = 0.01). Visual inspection reveals a strong seasonality to the data, and variable amplitude in peaks suggests transforming the data to try and minimize the effect of this variance on the analysis before beginning to look at decomposition and ARIMA diagnostics.
+\color{black}
+
 (b) Provide and discuss at least one exploratory visualization of your time series. For example, how the visualization guided/motivated any decisions about how to use/model the data or provides insights into your question’s answer
+
+\color{blue}
+In the main figure we can see that for most flu seasons there's a peak between 13-18 weeks into the season, but there is a reasonable amount of variation in this, with one peak happening as early as 3 weeks into the flu season, and another as late as 25 weeks into the season. This is definitely more variation than would be seen just due to deleting week 53 or the slight variation in how weeks line up year to year. Interestingly, despite the wide distribution of peaks during flu season, the trough of flu season almost universally occurs around week 30.
+
+Around the main plot I've highlighted a few flu seasons that had interesting characteristics. Subplots (a), (b) and (c) were all heavy flu years, with (b) reflecting the H1N1 (swine flu) epidemic; swine flu had a very early start in the year compared to typical flu variants, and is also the only time I've experienced hallucinations due to fever. Subplot (g) was interesting because it had two peaks during the season. Lastly, subplots (d), (e) and (f) are especially indicative of the effects COVID19 had on flu occurrence. Subplot (d) shows the flu season which included the initial spread of COVID19, which is quite likely why it has three peaks instead of one like the majority of seasons have, especially since early COVID19 strains had significant symptom overlap with influenza, and this data is related to doctor visits, not tested strains. Subplot (e) occurred during the height of non-pharmaceutical interventions intended to slow the spread (masking, social distancing, etc.)[@covid_npi], showing that there was almost no detectable flu season as a result. Subplot (f) occurred soon after the vast majority of state-level interventions had been lifted[@covid_npi], and peaked significantly earlier in the year than typical, possibly lending credence to the idea of immune debt [@immune_debt] causing people to be more vulnerable to infection after a period of low exposure.
+\color{black}
 
 ## Statistical Analysis
 
 (a) Estimate and interpret, in the context of your question, at least one non-ARIMA model that we used in class prior to ARIMA. For example, any of the smoothers or any of the mathematical models such as linear, exponential, polynomial, etc. Justify an related assumptions for these models (if there are any). In the Statistical Plan section you should motivate your choice in the sense of what it lets you learn about your time series related to your project goals
 
+\color{blue}
+
+\color{black}
+
 (b) Estimate an ARIMA model for your time series
 
     (i) Justify how, and that, you met any assumptions needed for an ARIMA model and explain why they must be met for ARIMA to be valid. Examples include stationarity, stable variance, etc. Examples could also include showing there is informative autocorrelation in the time series
+
+\color{blue}
+
+\color{black}
     (ii) If there was seasonality, justify your SARIMA choices
+
+\color{blue}
+
+\color{black}
     (iii) Justify your approach to choosing p, d, and q, and report each step/phase of this approach when applied to the data. For example, if you will systematically consider multiple models, describe this process and then provide results related to the series of candidate models. Alternatively, if you have a way to choose a single p, d, and q before estimating any models, explain how you will make this choice and why it is likely to lead to a reasonable ARIMA model. There are other approaches such as citing expert opinion or even doing something entirely new (that you can scientifically/statistically justify)
+
+\color{blue}
+
+\color{black}
     (iv) Provide and interpret ACF and PACF plots
+
+\color{blue}
+
+\color{black}
     (v) Justify your metric(s) for choosing a best/final model
+
+\color{blue}
+
+\color{black}
     (vi) Provide and interpret the statistical significance of any AR or MA coefficients in your final estimated model
+
+\color{blue}
+
+\color{black}
     (vii) Analyze the residuals to validate your final ARIMA model. Explain why each check you are performing with the residuals is necessary
+
+\color{blue}
+
+\color{black}
 
 ## Final Model and Conclusions
 (a) Provide an equation for your final estimated model and explain all parameters and variables in this equation
