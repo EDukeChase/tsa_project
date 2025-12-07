@@ -23,13 +23,16 @@ library(tseries)
 (a) State your research/scientific/policy question and how answering it translates to real world decisions
 
 \color{blue}
-How far out can a timeseries model be used to predict flu-like illness occurrence with reasonable accuracy? Has this changed significantly since COVID? This question could be useful in real world decisions because it could be used in healthcare environments for predicting upcoming needs due to flu season, like staffing, stocking vaccinations, medication supplies, etc.
+How far out can we forecast weekly flu-like illness occurrence with acceptable accuracy? Has this horizon changed significantly since COVID? This question could be useful in real world decisions because it could be used in healthcare environments for predicting upcoming needs due to flu season, like staffing, stocking vaccinations, medication supplies, etc.
 \color{black}
 
 (b) Describe how time series will be used to answer it. For example: prediction, trend modeling, detection of anomalies, etc.
 
 \color{blue}
-It will use prediction based on the time series to gauge how far out the model is useful beyond the last known data point
+For each forecast horizon $h \in \{1,2,\ldots,52\}$, I compute cumulative mean absolute error: $$\mathrm{CMAE}_{m}(h) = \frac{1}{h}\sum_{k=1}^{h}\left|y_{t+k}-\hat{y}^{(m)}_{t+k\mid t}\right|,$$
+where $t$ is the final week in the training set and $\hat{y}^{(m)}_{t+k\mid t}$ is the $k$-step-ahead forecast from model $m$.
+
+I define the effective forecast horizon as$$h^* = \max\{h : \mathrm{CMAE}_{m}(h) < \mathrm{CMAE}_{\text{snaive}}(h)\},$$ where $\mathrm{CMAE}_{\text{snaive}}(h)$ is computed analogously for a seasonal naive baseline. If the SARIMA never beats the seasonally naive model, I'll denote that with $h* = 0$
 \color{black}
 
 ## Data
@@ -43,6 +46,8 @@ The data is a good choice because it looks at flu-like illness prevalence throug
 
 \color{blue}    
 I'll have to get rid of extraneous variables that won't be used in my data, such as region (not relevant because I'm looking at the national level), or age makeup of patients. The other big issue I'll have to deal with is what to do with years that have 53 weeks instead of 52; my plan at the moment is to naively drop week 53, run my analysis, and then I can do a sensitivity analysis comparing other methods of dealing with week 53 once I have an outcome I can judge the sensitivity analysis on. Other than that, the data are pretty clean already, and I shouldn't have to create any variables to analyze.
+
+As a note: 5 of the 28 years of data had 53 weeks
 \color{black}
 
 (c) Provide a source for your data
@@ -194,7 +199,7 @@ plot(ili_ts,
 
 # Exploratory Analysis
 ```{r}
-#| label: seasonal-plots
+#| label: plot_seasons
 #| fig-width: 12
 #| fig-height: 8
 
@@ -274,16 +279,18 @@ p_main + p1 + p2 + p3 + p4 + p5 + p6 + p7 +
 
 In the main figure we can see that for most flu seasons there's a peak between 13-18 weeks into the season, but there is a reasonable amount of variation in this, with one peak happening as early as 3 weeks into the flu season, and another as late as 25 weeks into the season. This is definitely more variation than would be seen just due to deleting week 53 or the slight variation in how weeks line up year to year. Interestingly, despite the wide distribution of peaks during flu season, the trough of flu season almost universally occurs around week 30.
 
-Around the main plot I've highlighted a few flu seasons that had interesting characteristics. Subplots (a), (b) and (c) were all heavy flu years, with (b) reflecting the H1N1 (swine flu) epidemic; swine flu had a very early start in the year compared to typical flu variants, and is also the only time I've experienced hallucinations due to fever. Subplots (d) and (g) were interesting because they have two or more peaks during the season. Lastly, subplots (e) and (f) are especially indicative of the effects COVID19 had on flu occurrence. Sublot (e) occurred during the height of non-pharmaceutical interventions intended to slow the spread (masking, social distancing, etc.)[@covid_npi], showing that there was almost no detectable flu season as a result. Subplot (f) occurred soon after the vast majority of state-level interventions had been lifted[@covid_npi], and peaked significantly earlier in the year than typical, possibly lending credence to the idea of immune debt [@immune_debt] causing people to be more vulnerable to infection after a period of low exposure.
+Around the main plot I've highlighted a few flu seasons that had interesting characteristics. Subplots (a), (b) and (c) were all heavy flu years, with (b) reflecting the H1N1 (swine flu) epidemic; swine flu had a very early start in the year compared to typical flu variants, and is also the only time I've experienced hallucinations due to fever. Subplot (g) was interesting because it had two peaks during the season. Lastly, subplots (d), (e) and (f) are especially indicative of the effects COVID19 had on flu occurrence. Subplot (d) shows the flu season which included the initial spread of COVID19, which is quite likely why it has three peaks instead of one like the majority of seasons have, especially since early COVID19 strains had significant symptom overlap with influenza, and this data is related to doctor visits, not tested strains. Subplot (e) occurred during the height of non-pharmaceutical interventions intended to slow the spread (masking, social distancing, etc.)[@covid_npi], showing that there was almost no detectable flu season as a result. Subplot (f) occurred soon after the vast majority of state-level interventions had been lifted[@covid_npi], and peaked significantly earlier in the year than typical, possibly lending credence to the idea of immune debt [@immune_debt] causing people to be more vulnerable to infection after a period of low exposure.
 
 ```{r}
+#| label: test_stationarity
+
 adf.test(ili_ts, alternative = "stationary")
 kpss.test(ili_ts, null = "Level")
 ```
 The Augmented Dickey-Fuller test indicates that the data are stationary, but the KPSS test indicates that there is a trend. This isn't super surprising since flu rates are known to be very seasonal
 
 ```{r}
-#| label: acf-pacf
+#| label: plot_acf-pacf
 #| fig-asp: 0.8
 
 acf_theme <- theme_bw() +
@@ -325,21 +332,232 @@ pacf_lt <- ggPacf(as.numeric(ili_ts), lag.max = 104) + seasonal_highlight +
     )
 ```
 
-Definitely don't have exponential decay in the ACF plot, but the PACF has very good exponential decay, falling off immediately with a few random significant spikes which are to be expected just due to the number of lags being shown. Looking at the long-term plots, the sinusoidal appearance of the ACF is strongly indicative of a seasonal trend, and the long term PACF plot reinforces this, with lags near week 52 generally being significant.
+Definitely don't have exponential decay in the ACF plot, but the PACF shows strong spikes at lags 1 and 2, but then is near 0 with a few random significant spikes which are to be expected just due to the number of lags being shown. Looking at the long-term plots, the sinusoidal appearance of the ACF is strongly indicative of a seasonal trend, and the long term PACF plot reinforces this, with lags near week 52 generally being significant.
+
+ACF/PACF indicate strong seasonality, while ADF/KPSS give mixed signals consistent with seasonal structure and possible slow-moving changes over time. Given this and the visually non-constant amplitude, a variance-stabilizing transform (log) is a defensible preprocessing step before decomposition and ARIMA diagnostics.
 
 
 ```{r}
 #| label: decomposition
 
-ili_decomp <- stl(ili_ts, s.window = "periodic")
-plot(ili_decomp, main = "STL Decomposition of Weighted ILI %")
+log_ili_ts <- log(ili_ts)
+
+log_ili_decomp <- stl(log_ili_ts, s.window = "periodic")
+plot(log_ili_decomp, main = "STL Decomposition of ln(Weighted ILI %)")
 ```
 
 Basic STL (season-trend-loess) decomposition. Seasonality is pretty clear, but the trend line is very much not linear, and doesn't look stationary, and based on the remainders it looks like there's at least some amount of cyclical or seasonal trend which isn't being accounted for on top of the few spikes that correlate to significant events: 2003 - 2004 was a particularly heavy flu year that started pretty early, 2009 was swine flu, 2020-2023 reflect the impacts of COVID19; also, after the 2021 - 2022 the definition for ILI no longer includes "without a known cause other than influenza", which would reduce the number of ILI since ruling out COVID19 would be a possibility. 
 
-Because this isn't super clear I'm going to try a
+
+
+
+# Model Prep
+```{r}
+#| label: prep_train-test-split
+
+# Covid-inclusive train/test datasets
+train_ci_df <- ili_df |> 
+  filter(flu_season < 2024) |> 
+  arrange(year, week)
+
+## Just the 2024-2025 season
+test_ci_df <- ili_df |> 
+  filter(flu_season == 2024) |> 
+  arrange(year, week)
+
+## Convert to time series objects
+train_ci_ts <- ts(
+  train_ci_df$ili_w,
+  start = c(train_ci_df$year[1], train_ci_df$week[1]),
+  frequency = 52
+)
+
+test_ci_ts <- ts(
+  test_ci_df$ili_w,
+  start = c(test_ci_df$year[1], test_ci_df$week[1]),
+  frequency = 52
+)
+
+# Covid exclusive train/test datasets
+train_ce_df <- ili_df |> 
+  filter(flu_season < 2018) |> 
+  arrange(year, week)
+
+## Just the 2024-2025 season
+test_ce_df <- ili_df |> 
+  filter(flu_season == 2018) |> 
+  arrange(year, week)
+
+## Convert to time series objects
+train_ce_ts <- ts(
+  train_ce_df$ili_w,
+  start = c(train_ce_df$year[1], train_ce_df$week[1]),
+  frequency = 52
+)
+
+test_ce_ts <- ts(
+  test_ce_df$ili_w,
+  start = c(test_ce_df$year[1], test_ce_df$week[1]),
+  frequency = 52
+)
+```
+
+## Seasonal Naive Models
 
 ```{r}
+#| label: model_seasonal-naive_ci
+
+# Build seasonally naive model
+snaive_model <- snaive(train_ci_ts, h = length(test_ci_ts))
+
+autoplot(snaive_model, include = 104) +
+  autolayer(test_ci_ts, series = "Actual (2024-2025)", size = 1) +
+  scale_color_manual(values = c("Actual (2024-2025)" = "black",
+                                "Predicted" = "#D55E00")) +
+  theme_minimal() + 
+  labs(
+    title = "Seasonal Naive Forecast Validation",
+    subtitle = "Logic: Prediction = Observation from same week in previous year.",
+    y = "Weighted ILI%",
+    x = "Year"
+  )
+```
+
+
+## Holt-Winters Model
+
+```{r}
+#| label: model_holt-winters_ci
+
+hw_model <- HoltWinters(train_ci_ts, seasonal = "additive")
+hw_forecast <- forecast(hw_model, h = length(test_ci_ts))
+
+autoplot(hw_forecast, include = 102) +
+  autolayer(test_ci_ts, series = "Actual (2024-2025)", size = 1) +
+  scale_color_manual(values = c("Actual (2024-2025)" = "black", "Predicted" = "#0072B2")) +
+labs(
+  title = "Holt-Winters Forecast Validation",
+  subtitle = "Training: 2002-2023 | Test: 2024-2025 Flu Season",
+  y = "Weighted ILI%",
+  x = "Year"
+)
+```
+
+
+
+
+
+## SARIMA Model
+
+```{r}
+#| label: model-prep_sarima_ci
+# 1. Check Seasonal Differencing Requirements (D)
+# We test using the standard OCSB test and the STL-based measure
+print("--- Seasonal Differencing Tests ---")
+print(paste("nsdiffs (OCSB):", nsdiffs(train_ci_ts, test = "ocsb")))
+print(paste("nsdiffs (SEAS):", nsdiffs(train_ci_ts, test = "seas")))
+
+# 2. Check Trend Differencing Requirements (d)
+# We test using KPSS (null = stationary) vs ADF (null = non-stationary)
+# Note: We run this on the seasonally adjusted (or just raw) data to check trend
+print("--- Trend Differencing Tests ---")
+print(paste("ndiffs (KPSS):", ndiffs(train_ci_ts, test = "kpss")))
+print(paste("ndiffs (ADF):",  ndiffs(train_ci_ts, test = "adf")))
+
+# 3. Explicit Unit Root Tests (to show the p-values)
+# This highlights the conflict: ADF might say "Stationary" (p < 0.05) 
+# while KPSS says "Non-Stationary" (p < 0.05)
+print("--- Unit Root Test Details ---")
+adf_res <- adf.test(train_ci_ts)
+kpss_res <- kpss.test(train_ci_ts, null = "Trend")
+
+print(paste("ADF p-value:", round(adf_res$p.value, 4), 
+            "-> Suggests", ifelse(adf_res$p.value < 0.05, "d=0", "d=1")))
+print(paste("KPSS p-value:", round(kpss_res$p.value, 4), 
+            "-> Suggests", ifelse(kpss_res$p.value < 0.05, "d=1", "d=0")))
+```
+
+```{r}
+#| label: model-comparison_sarima_ci
+
+# Load models to compare
+sarima_d0_D0 <- readRDS(here("data", "sarima_d0_D0.rds"))
+sarima_d0_D1 <- readRDS(here("data", "sarima_d0_D1.rds"))
+sarima_d1_D0 <- readRDS(here("data", "sarima_d1_D0.rds"))
+sarima_d1_D1 <- readRDS(here("data", "sarima_d1_D1.rds"))
+
+# Already have lowest AICc model for each of those differencing paremeters
+# Not valid to just compare their AICcs against each other, so will compare
+# their RMSE performance on the test dataset (2024-2025 flu season)
+metrics_d0_D0 <- accuracy(forecast(sarima_d0_D0, h = 52), test_ci_ts)
+metrics_d0_D1 <- accuracy(forecast(sarima_d0_D1, h = 52), test_ci_ts)
+metrics_d1_D0 <- accuracy(forecast(sarima_d1_D0, h = 52), test_ci_ts)
+metrics_d1_D1 <- accuracy(forecast(sarima_d1_D1, h = 52), test_ci_ts)
+
+sarima_comparison_results <- tibble(
+  "Model name" = c("Stationary", "Seasonal Diff",
+           "Trend Diff", "Double Diff"),
+  # Extract ARIMA parameters
+  p = c(sarima_d0_D0$arma[1], sarima_d0_D1$arma[1], sarima_d1_D0$arma[1], sarima_d1_D1$arma[1]),
+  d = c(sarima_d0_D0$arma[6], sarima_d0_D1$arma[6], sarima_d1_D0$arma[6], sarima_d1_D1$arma[6]),
+  q = c(sarima_d0_D0$arma[2], sarima_d0_D1$arma[2], sarima_d1_D0$arma[2], sarima_d1_D1$arma[2]),
+  P = c(sarima_d0_D0$arma[3], sarima_d0_D1$arma[3], sarima_d1_D0$arma[3], sarima_d1_D1$arma[3]),
+  D = c(sarima_d0_D0$arma[7], sarima_d0_D1$arma[7], sarima_d1_D0$arma[7], sarima_d1_D1$arma[7]),
+  Q = c(sarima_d0_D0$arma[4], sarima_d0_D1$arma[4], sarima_d1_D0$arma[4], sarima_d1_D1$arma[4]),
+  
+  # Extract RMSE from metrics above
+  "RMSE (In-Sample)" = c(
+    round(metrics_d0_D0["Training set", "RMSE"], 3), 
+    round(metrics_d0_D1["Training set", "RMSE"], 3),
+    round(metrics_d1_D0["Training set", "RMSE"], 3), 
+    round(metrics_d1_D1["Training set", "RMSE"], 3)
+  ),
+  
+  "RMSE (Out-of-Sample)" = c(
+    round(metrics_d0_D0["Test set", "RMSE"], 3), 
+    round(metrics_d0_D1["Test set", "RMSE"], 3),
+    round(metrics_d1_D0["Test set", "RMSE"], 3), 
+    round(metrics_d1_D1["Test set", "RMSE"], 3)
+  )
+)
+
+
+print(sarima_comparison_results)
+```
+
+Differencing diagnostics on the COVID training set suggest $D = 0$. However, `auto.arima()` selected a model with $D = 1$, and in out-of-sample validation (2024-2025 season) the $D = 1$ optimized versions achieved lower RMSE than models with $D = 0$. So I'll go with the $D = 1$ version due to empirical evidence that they perform better.
+
+```{r}
+#| label: forecast-plot_sarima_d0_D1_ci
+
+sarima_fc <- forecast(sarima_d0_D1, h = length(test_ci_ts))
+
+autoplot(sarima_fc, include = 104) +
+  autolayer(test_ci_ts, series = "Actual (2024-2025)", size = 1) +
+  scale_color_manual(values = c("Actual (2024-2025)" = "black",
+                                "Predicted" = "#D55E00")) +
+  theme_minimal() + 
+  labs(
+    title = "SARIMA Forecast Validation",
+    substitle = "(p = 1, d = 0, q = 2, P = 2, D = 1, Q = 0",
+    y = "Weighted ILI%",
+    x = "Year"
+  )
+```
+
+# Validation
+
+# Limitations/Next Steps
+
+
+
+# Appendix
+## STL Tuning (original)
+
+```{r}
+#| eval: false
+#| include: false
+
 ili_log_ts <- log(ili_ts)
 
 ili_log_decomp <- stl(ili_log_ts, s.window = "periodic")
@@ -351,6 +569,9 @@ plot(ili_flexible_decomp, main = "STL Decomposition (Evolving Seasonality)")
 ```
 
 ```{r}
+#| eval: false
+#| include: false
+
 # Find the optimal Box-Cox parameter
 lambda_opt <- BoxCox.lambda(ili_ts)
 print(paste("Optimal Lambda:", lambda_opt))
@@ -364,6 +585,9 @@ plot(ili_opt_decomp, main = paste("STL with Lambda =", round(lambda_opt, 2)))
 ```
 
 ```{r}
+#| eval: false
+#| include: false
+
 # Compare different windows side-by-side
 # Note: Using the Box-Cox transformed data is still best
 par(mfrow=c(2,2)) # 2x2 grid
@@ -388,6 +612,9 @@ par(mfrow=c(1,1)) # Reset plot area
 ```
 
 ```{r}
+#| eval: false
+#| include: false
+
 # Define the windows you want to test
 # Must be odd numbers or "periodic"
 windows_to_test <- c(7, 13, 21, 51, 101, "periodic")
@@ -427,8 +654,8 @@ print(tuning_results)
 ```
 
 ```{r}
-library(ggplot2)
-library(tidyr)
+#| eval: false
+#| include: false
 
 # 1. Generate a sequence of ODD integers
 # We'll go from 7 to 51. Going higher usually just flatlines.
@@ -482,11 +709,12 @@ ggplot(results_long, aes(x = window, y = Value, color = Metric)) +
     y = "Value"
   )
 ```
-
-
-# Exploratory Analysis Redone
+## STL Tuning (Redone section)
 ```{r}
 #| label: assess_variance-transformations
+#| eval: false
+#| include: false
+
 
 # Log transform data
 ili_log_ts <- log(ili_ts)
@@ -516,6 +744,9 @@ With $\lambda = 0.04" for the BoxCox transformation, I'll just use the log trans
 
 ```{r}
 #| label: eda_decomposition
+#| eval: false
+#| include: false
+
 
 # Periodic decomposition
 decomp_periodic <- stl(ili_log_ts, s.window = "periodic")
@@ -531,6 +762,9 @@ Amplitude varies, but there is a pretty regular pattern of spikes in the data po
 
 ```{r}
 #| label: tuning_s-window
+#| eval: false
+#| include: false
+
 
 # --- 1. Calculate the Baseline (Periodic) Metrics First ---
 decomp_periodic <- stl(ili_boxcox_ts, s.window = "periodic")
@@ -634,10 +868,8 @@ The top plot showed that the linear method (`s.degree = 1`) consistently had the
 ```{r}
 #| label: final-decomp-comparison
 #| fig-height: 6
-
-library(forecast)
-library(patchwork)
-library(ggplot2)
+#| eval: false
+#| include: false
 
 # 1. The "Naive" Baseline (Periodic)
 # We use this to show what "bad" looks like
@@ -673,6 +905,9 @@ p1 / p2
 While there isn't a super noticable visual improvement in the remainders after optimization, it is still better than the static periodic decomposision based on a few metrics. The optimized model doesn't force the seasonality to be identical every season, which allows it to better capture the variations that are seen in messy biological processes like the flu, and reduces the amount of remainder that results just from forcing static seasonality on the pattern.
 
 ```{r}
+#| eval: false
+#| include: false
+
 # 1. Baseline: Periodic (Constant)
 decomp_periodic <- stl(ili_boxcox_ts, s.window = "periodic")
 var_periodic <- var(decomp_periodic$time.series[, "remainder"])
@@ -695,169 +930,73 @@ print(paste("Optimized Variance:", round(var_final, 5)))
 print(paste("Total Reduction:", round(pct_reduction_total, 2), "%"))
 ```
 
-
-
-# Model Prep
+## Side-by-Side Forecast Plots
 ```{r}
-#| label: train-test-split
+#| label: covid-inclucive-forecasts
+#| eval: false
+#| include: false
 
-# Subset the training and test datasets
-# 2002-2003 through 2023-2024 seasons
-train_df <- ili_df |> 
-  filter(flu_season < 2024) |> 
-  arrange(year, week)
 
-# Just the 2024-2025 season
-test_df <- ili_df |> 
-  filter(flu_season == 2024) |> 
-  arrange(year, week)
+# Forecast objects (you already have these)
+fc_sn  <- forecast(snaive_model, h = length(test_ci_ts))
+fc_hw  <- hw_forecast
+fc_sa  <- sarima_fc
 
-# Convert to time series objects
-train_ts <- ts(
-  train_df$ili_w,
-  start = c(train_df$year[1], train_df$week[1]),
-  frequency = 52
-)
-
-test_ts <- ts(
-  test_df$ili_w,
-  start = c(test_df$year[1], test_df$week[1]),
-  frequency = 52
-)
-```
-
-# Seasonal Naive Model
-
-```{r}
-#| label: seasonal-naive_model
-
-# Build seasonally naive model
-snaive_model <- snaive(train_ts, h = length(test_ts))
-
-autoplot(snaive_model, include = 104) +
-  autolayer(test_ts, series = "Actual (2024-2025)", size = 1) +
-  scale_color_manual(values = c("Actual (2024-2025)" = "black",
-                                "Predicted" = "#D55E00")) +
-  theme_minimal() + 
-  labs(
-    title = "Seasonal Naive Forecast Validation",
-    substitle = "Logic: Prediction = Observation from same week in previous year.",
-    y = "Weighted ILI%",
-    x = "Year"
+fc_to_df <- function(fc, model_name) {
+  tibble(
+    time  = as.numeric(time(fc$mean)),
+    mean  = as.numeric(fc$mean),
+    lo80  = as.numeric(fc$lower[,1]),
+    hi80  = as.numeric(fc$upper[,1]),
+    lo95  = as.numeric(fc$lower[,2]),
+    hi95  = as.numeric(fc$upper[,2]),
+    model = model_name
   )
-```
+}
 
-
-# Holt-Winters Model
-
-```{r}
-#| label: hw-model
-
-hw_model <- HoltWinters(train_ts, seasonal = "additive")
-hw_forecast <- forecast(hw_model, h = length(test_ts))
-
-autoplot(hw_forecast, include = 102) +
-  autolayer(test_ts, series = "Actual (2024-2025)", size = 1) +
-  scale_color_manual(values = c("Actual (2024-2025)" = "black", "Predicted" = "#0072B2")) +
-labs(
-  title = "Holt-Winters Forecast Validation",
-  subtitle = "Training: 2002-2023 | Test: 2024-2025 Flu Season",
-  y = "Weighted ILI%",
-  x = "Year"
-)
-```
-
-
-
-
-
-# SARIMA Model
-
-```{r}
-# 1. Check Seasonal Differencing Requirements (D)
-# We test using the standard OCSB test and the STL-based measure
-print("--- Seasonal Differencing Tests ---")
-print(paste("nsdiffs (OCSB):", nsdiffs(ili_ts, test = "ocsb")))
-print(paste("nsdiffs (SEAS):", nsdiffs(ili_ts, test = "seas")))
-
-# 2. Check Trend Differencing Requirements (d)
-# We test using KPSS (null = stationary) vs ADF (null = non-stationary)
-# Note: We run this on the seasonally adjusted (or just raw) data to check trend
-print("--- Trend Differencing Tests ---")
-print(paste("ndiffs (KPSS):", ndiffs(ili_ts, test = "kpss")))
-print(paste("ndiffs (ADF):",  ndiffs(ili_ts, test = "adf")))
-
-# 3. Explicit Unit Root Tests (to show the p-values)
-# This highlights the conflict: ADF might say "Stationary" (p < 0.05) 
-# while KPSS says "Non-Stationary" (p < 0.05)
-print("--- Unit Root Test Details ---")
-adf_res <- adf.test(ili_ts)
-kpss_res <- kpss.test(ili_ts, null = "Trend")
-
-print(paste("ADF p-value:", round(adf_res$p.value, 4), 
-            "-> Suggests", ifelse(adf_res$p.value < 0.05, "d=0", "d=1")))
-print(paste("KPSS p-value:", round(kpss_res$p.value, 4), 
-            "-> Suggests", ifelse(kpss_res$p.value < 0.05, "d=1", "d=0")))
-```
-
-```{r}
-#| label: sarima-grid-search
-
-sarima_thorough <- auto.arima(train_ts, stepwise = FALSE, approximation = FALSE,
-                              lambda = "auto", trace = TRUE)
-
-print(sarima_thorough)
-```
-
-```{r}
-#| label: sarima-comparison
-
-# Load models to compare
-sarima_d0_D0 <- readRDS(here("data", "sarima_d0_D0.rds"))
-sarima_d0_D1 <- readRDS(here("data", "sarima_d0_D1.rds"))
-sarima_d1_D0 <- readRDS(here("data", "sarima_d1_D0.rds"))
-sarima_d1_D1 <- readRDS(here("data", "sarima_d1_D1.rds"))
-
-# Already have lowest AICc model for each of those differencing paremeters
-# Not valid to just compare their AICcs against each other, so will compare
-# their RMSE performance on the test dataset (2024-2025 flu season)
-metrics_d0_D0 <- accuracy(forecast(sarima_d0_D0, h = 52), test_ts)
-metrics_d0_D1 <- accuracy(forecast(sarima_d0_D1, h = 52), test_ts)
-metrics_d1_D0 <- accuracy(forecast(sarima_d1_D0, h = 52), test_ts)
-metrics_d1_D1 <- accuracy(forecast(sarima_d1_D1, h = 52), test_ts)
-
-sarima_comparison_results <- tibble(
-  "Model name" = c("Stationary", "Seasonal Diff",
-           "Trend Diff", "Double Diff"),
-  # Extract ARIMA parameters
-  p = c(sarima_d0_D0$arma[1], sarima_d0_D1$arma[1], sarima_d1_D0$arma[1], sarima_d1_D1$arma[1]),
-  d = c(sarima_d0_D0$arma[6], sarima_d0_D1$arma[6], sarima_d1_D0$arma[6], sarima_d1_D1$arma[6]),
-  q = c(sarima_d0_D0$arma[2], sarima_d0_D1$arma[2], sarima_d1_D0$arma[2], sarima_d1_D1$arma[2]),
-  P = c(sarima_d0_D0$arma[3], sarima_d0_D1$arma[3], sarima_d1_D0$arma[3], sarima_d1_D1$arma[3]),
-  D = c(sarima_d0_D0$arma[7], sarima_d0_D1$arma[7], sarima_d1_D0$arma[7], sarima_d1_D1$arma[7]),
-  Q = c(sarima_d0_D0$arma[4], sarima_d0_D1$arma[4], sarima_d1_D0$arma[4], sarima_d1_D1$arma[4]),
-  
-  # Extract RMSE from metrics above
-  "RMSE (In-Sample)" = c(
-    round(metrics_d0_D0["Training set", "RMSE"], 3), 
-    round(metrics_d0_D1["Training set", "RMSE"], 3),
-    round(metrics_d1_D0["Training set", "RMSE"], 3), 
-    round(metrics_d1_D1["Training set", "RMSE"], 3)
-  ),
-  
-  "RMSE (Out-of-Sample)" = c(
-    round(metrics_d0_D0["Test set", "RMSE"], 3), 
-    round(metrics_d0_D1["Test set", "RMSE"], 3),
-    round(metrics_d1_D0["Test set", "RMSE"], 3), 
-    round(metrics_d1_D1["Test set", "RMSE"], 3)
-  )
+df_fc <- bind_rows(
+  fc_to_df(fc_sn, "Seasonal naive"),
+  fc_to_df(fc_hw, "Holt-Winters"),
+  fc_to_df(fc_sa, "SARIMA")
 )
 
+df_actual <- tibble(
+  time = as.numeric(time(test_ci_ts)),
+  y    = as.numeric(test_ci_ts)
+)
 
-print(sarima_comparison_results)
+# Shared y-limits across all panels (actual + all intervals)
+y_min <- min(df_actual$y, df_fc$lo95, na.rm = TRUE)
+y_max <- max(df_actual$y, df_fc$hi95, na.rm = TRUE)
+
+make_panel <- function(model_name) {
+  d <- df_fc %>% filter(model == model_name)
+  ggplot() +
+    geom_ribbon(data=d, aes(x=time, ymin=lo95, ymax=hi95), alpha=0.15) +
+    geom_ribbon(data=d, aes(x=time, ymin=lo80, ymax=hi80), alpha=0.25) +
+    geom_line(data=d, aes(x=time, y=mean), linewidth=0.7) +
+    geom_line(data=df_actual, aes(x=time, y=y), linewidth=0.8) +
+    coord_cartesian(ylim=c(y_min, y_max)) +
+    labs(title=model_name, x=NULL, y="Weighted ILI%") +
+    theme_minimal()
+}
+
+(make_panel("Seasonal naive") |
+ make_panel("Holt-Winters") |
+ make_panel("SARIMA")) +
+  plot_annotation(title = "Forecast comparison on a common scale (Test season)")
+
 ```
 
+# Miscellaneous (not sure what to do with)
+```{r}
+#| eval: false
+#| include: false
 
+checkresiduals(sarima_d0_D1)
+```
+
+Residual diagnostics indicated remaining dependence: the Ljung–Box test rejected the null of zero autocorrelation (p < 0.001) and the residual ACF showed a few notable seasonal-lag spikes (multiples of 52 weeks). This suggests the SARIMA model does not fully capture all serial structure in the ILI series, plausibly due to irregular epidemic shocks and regime changes (e.g., COVID-era disruptions). Nevertheless, model selection for this project prioritizes out-of-sample forecast performance against a seasonal naive baseline.
 
 
 # References
