@@ -3,6 +3,7 @@
 
 library(styler)     # Code formatting
 library(shrtcts)    # Keybinding management
+library(miniUI)     # Required for one of these
 
 #' Style Selection
 #' @shortcut Ctrl+Alt+A

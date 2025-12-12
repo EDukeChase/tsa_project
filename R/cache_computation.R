@@ -39,14 +39,15 @@
 #'   "done"
 #' }, cache_filename = "sequential_result.rds", parallel = FALSE)
 #' }
-cache_computation <- function(code, cache_filename, parallel = TRUE) {
+cache_computation <- function(code, cache_filename, deps = NULL, parallel = TRUE) {
   
-  # Create a unique hash of the code expression
+  # Hash the expression and any declared dependencies
   code_expr <- substitute(code)
-  current_hash <- digest::digest(code_expr)
+  current_hash <- digest::digest(list(code_expr, deps))
   
   # Define the full path to the cache file
   cache_path <- here::here("output", cache_filename)
+  dir.create(dirname(cache_path), showWarnings = FALSE, recursive = TRUE)
   
   # Check if a cache file exists and if the hash matches
   if (file.exists(cache_path)) {
@@ -55,38 +56,27 @@ cache_computation <- function(code, cache_filename, parallel = TRUE) {
       message("Cache hit: Loading '", cache_filename, "' from cache.")
       return(cached_data$result)
     } else {
-      message("Code has changed. Re-running computation.")
+      message("Code/deps changed. Re-running computation.")
     }
   } else {
     message("No cache found. Running computation.")
   }
   
-  # If we get here, we need to run the code.
   # Check if parallel execution is requested.
   if (parallel) {
+    old_plan <- future::plan()
+    on.exit(future::plan(old_plan), add = TRUE)
+    
     # --- Set up parallel plan ---
-    n_cores <- parallel::detectCores() - 1
-    future::plan(future::multisession, workers = n_cores)
-    message(paste("Parallel plan activated with", future::nbrOfWorkers(), "workers."))
-    
-    # IMPORTANT: Ensure the sequential plan is restored when the function exits,
-    # even if there's an error.
-    on.exit({
-      future::plan(future::sequential)
-      message("Parallel plan shut down. Restored sequential plan.")
-    }, add = TRUE)
-    
-    # Evaluate the user's code in the parallel context
-    result <- eval(code_expr)
-    
-  } else {
-    # Run the code sequentially
-    result <- eval(code_expr)
+    n_avail  <- future::availableCores()
+    workers  <- min(8L, max(1L, n_avail - 1L))
+    future::plan(future::multisession, workers = workers)
+    message("Parallel plan activated with ", workers, " workers (available cores: ", n_avail, ").")
   }
   
-  # Save the result AND the hash to the cache file
-  data_to_cache <- list(result = result, hash = current_hash)
-  saveRDS(data_to_cache, file = cache_path)
+  # Save the result and the hash to the cache file
+  result <- eval(code_expr, envir = parent.frame())
+  saveRDS(list(result = result, hash = current_hash), cache_path)
   
   return(result)
 }

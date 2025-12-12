@@ -4,12 +4,15 @@ library(tidyverse)          # For data manipulation and plotting (ggplot2, dplyr
 
 # --- Quarto & Caching Packages ---
 library(digest)             # Creates hashes for caching function.
+library(furrr)               # Parallel processing
 library(future)             # Parallel processing
 library(knitr)              # Used for running R code in Quarto
 
 # --- Visualization Packages ---
-library(RColorBrewer)       # Color palettes to enable color-blind friendliness
+library(kableExtra)         # Creates nice tables
 library(patchwork)          # Sophisticated grid arrangement
+library(RColorBrewer)       # Color palettes to enable color-blind friendliness
+
 
 
 # --- Set seed for reproducibility ---

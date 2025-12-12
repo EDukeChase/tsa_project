@@ -1,6 +1,7 @@
 # --- Project Specific Folders and Files---
 /data/*
 !/data/README.md
+/diffs/*
 /docs/*
 !/docs/README.md
 /output/*

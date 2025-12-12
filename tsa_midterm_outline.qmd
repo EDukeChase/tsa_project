@@ -4,28 +4,37 @@ author: "E. Duke Chase"
 date: today
 ---
 
+```{r}
+#| label: load-packages
+#| echo: false
+
+library(here)
+library(kableExtra)
+```
+
+
 # Outline
 ## Question
 (a) State your research/scientific/policy question and how answering it translates to real world decisions
 
 \color{blue}
-How far out can we forecast weekly flu-like illness occurrence with acceptable accuracy? Has this horizon changed significantly since COVID? This question could be useful in real world decisions because it could be used in healthcare environments for predicting upcoming needs due to flu season, like staffing, stocking vaccinations, medication supplies, etc.
+How far out can we forecast weekly flu-like illness occurrence with acceptable accuracy? Has this horizon changed significantly since COVID-19? This question could be useful in real world decisions because it could be used in healthcare environments for predicting upcoming needs due to flu season, like staffing, stocking vaccinations, medication supplies, etc.
 \color{black}
 
 (b) Describe how time series will be used to answer it. For example: prediction, trend modeling, detection of anomalies, etc.
 
 \color{blue}
-For each forecast horizon $h \in \{1,2,\ldots,52\}$, I compute cumulative mean absolute error: $$\mathrm{CMAE}_{m}(h) = \frac{1}{h}\sum_{k=1}^{h}\left|y_{t+k}-\hat{y}^{(m)}_{t+k\mid t}\right|,$$
-where $t$ is the final week in the training set and $\hat{y}^{(m)}_{t+k\mid t}$ is the $k$-step-ahead forecast from model $m$.
+For each forecast horizon $h \in \{1,2,\ldots,52\}$, I will compute cumulative mean absolute error: $$\mathrm{CMAE}(h) = \frac{1}{h}\sum_{k=1}^{h}\left|y_{t+k}-\hat{y}_{t+k\mid t}\right|,$$
+where $t$ is the final week in the training set and $\hat{y}_{t+k\mid t}$ is the $k$-step-ahead forecast for the model under consideration.
 
-I define the effective forecast horizon as$$h^* = \max\{h : \mathrm{CMAE}_{m}(h) < \mathrm{CMAE}_{\text{snaive}}(h)\},$$ where $\mathrm{CMAE}_{\text{snaive}}(h)$ is computed analogously for a seasonal naive baseline. If the SARIMA never beats the seasonally naive model, I'll denote that with $h* = 0$
+I define the effective forecast horizon as$$h^* = \max\{h : \mathrm{CMAE}_{model}(h) < \mathrm{CMAE}_{\text{snaive}}(h)\},$$ where $\mathrm{CMAE}_{\text{snaive}}(h)$ is computed analogously for a seasonal naive baseline. If the SARIMA never beats the seasonally naive model, I'll denote that with $h* = 0$
 \color{black}
 
 ## Data
 (a) Justify (and/or provide limitations in) how your chosen data is the correct data for your question
 
 \color{blue}
-The data is a good choice because it looks at flu-like illness prevalence throughout the country, but this does come with some limitations. Mainly, that by looking at only the national level it's likely that the forecasting will be less precise than could be achieved if we refined it down to regional or state level. Additionally, it is measuring the percentage of patients that come in to doctors with influenza-like illnesses, which is generally best, but if for some reason some other disease spiked at the same time as ILIs did, but to a greater extent than ILIs, that would make the ILI measure we have go down, even though the total number of cases went up. Another issue with the data is that ILI is defined as "fever (temperature of 100°F [37.8°C] or greater) and a cough and/or a sore throat," [@ili_methods] so any increase in the prevalence of diseases with those symptoms can result in a bump. There is alternate data available that come from testing laboratories and are based on confirmed influenza cases, but there's a selection bias there since not all ILI result in a sample being sent to a lab. An additional limitation is that generally only more severe cases of ILI will result in doctor's visits, but there's not really much to be done about that other than document it.
+The data is a good choice because it looks at flu-like illness prevalence throughout the country, but this does come with some limitations. It is measuring the percentage of patients that come in to doctors with influenza-like illnesses, and while I tend to generally consider relative measurements best, if for some reason some other disease spiked at the same time as ILIs did, but to a greater extent than ILIs, that would make the ILI measure we have go down, even though the total number of cases went up. Another issue with the data is that ILI is defined as "fever (temperature of 100°F [37.8°C] or greater) and a cough and/or a sore throat," [@ili_methods] so any increase in the prevalence of diseases with those symptoms can result in a bump. There is alternate data available that come from testing laboratories and are based on confirmed influenza cases, but there's a selection bias there since not all ILI result in a sample being sent to a lab to be cultured. An additional limitation is that generally only more severe cases of ILI will result in doctor's visits, but there's not really much to be done about that other than to document it.
 \color{black}
 
 (b) Discuss any data processing/cleaning/preparation steps and/or decisions related to the identification/creation of the data you used in your analysis
@@ -45,29 +54,53 @@ The data comes from the U.S. Outpatient Influenza-like Illness Surveillance Netw
 (d) Describe key features/properties of your time series such as size, time step units, variable being studied, etc.
 
 \color{blue}
-There are 1467 weekly measurements spanning the time period of 1997 - 2025. The variable being studied is percentage of doctor's office visits that are related to influenza-like illnesses.
+The full dataset includes 1,467 weekly measurements spanning the time period of 1997 - 2025, although after removing a significant amount due to incompleteness or significant methodological change, the data set used for this analysis consists of 1,040 weekly measurements spanning 2005-2024. The variable being studied is percentage of doctor's office visits that are related to influenza-like illnesses.
 \color{black}
 
 ## Statistical Plan
 (a) Provide a brief a priori analytical plan for your project. What pre-processing, visualizing, modeling steps, etc. will you conduct? (Note: what you do for item d. in the Data component section above should be described here as well)
 
 \color{blue}
-Start out with pre-processing indicated before, basic plots of ILI percentage over time, check for stationarity, decompose the series and visualize trend, seasonality, and remaining noise. From there I'll use ACF and PACF to identify likely candidates for p, P, d, D, q, and Q, and use them for a SARIMA model, since there is usually a strong seasonal component to the occurrence of flu-like diseases. I will also estimate a Holt-Winters model to serve as a baseline comparison for the SARIMA model, and use AIC and RMSE to compare them.
+Start out with basic data cleaning and validation, ensuring that the data I have are usable for the analysis. Then I'll create basic plots of ILI percentage over time, find basic descriptive statistics such as when seasons normally peak and the variability of that. Then I'll split the data into the PP and FH datasets and see if I can transform the data in some way to try to account for the significant variability that is present in flu seasons due to their biological nature. Next I'll visualize decompositions of the PP and FH data and consider if I might need to mae further transformations based on the remainder after trend and seasonality are accounted for. Once I feel confident with that, I'll plot the ACF and PACF, perform ADF and KPSS tests for stationarity, and try to use those to inform the parameters for my SARIMA model. I will also estimate a Holt-Winters model to serve as a baseline comparison for the SARIMA model, and use CMAE to compare them to each other and to the seasonally naive model to assess performance.
 \color{black}
 
 (b) Explain how the steps in your plan build a framework for making a robust conclusion for your research question. That is, how does your plan give a complete answer to your question?
 
 \color{blue}
-To get a good idea of the reliable forecast horizon, I'll use a train/test split to be able to see how my model performs on real world data. To determine how resilient SARIMA modeling is to shocks, I will actually have two different models: one that will be a pre-COVID19 control model that uses the years before 2019 as training data and tests on 2019, and then a complete model that uses the years before 2024 as training data and tests on 2024. 
+!!!BE SURE TO REWORK THIS SECTION TO DISTINGUISH IT FROM PART (A) MORE!!!
+To get a good idea of the reliable forecast horizon, I'll use a train/test split to be able to see how my model performs on real world data. To determine how resilient SARIMA modeling is to shocks, I will actually have two different models: one that will be a pre-pandemic (PP) control model that uses the flu seasons before the 2017-18 season as training data and tests on the 2018-19 season, and then a full history (FH) model that uses the years before the 2023-24 season as training data and tests on the 2024-25 flu season. 
     
-For both models, I'll calculate the RMSE for each week of the forecast and comparit to a naive baseline that just assumes any given week will be the same as the same week in the previous year. Wherever the SARIMA error becomes worse than the naive error, that's the limit of my effective forecasting window. I can then compare this window in 2019 vs 2024 and quantify how much the shock of COVID19 affected model performance.
+For both models, I'll calculate the RMSE for each week of the forecast and compare it to a seasonally naive baseline that just assumes any given week will be the same as the same week in the previous year (error margins for these point estimates will be computed based on prior year values for the same week). Wherever the SARIMA error becomes worse than the naive error, that's the limit of my effective forecasting window. I can then compare this window in the 2018-19 vs 2024-25 flu seasons and quantify how much the shock of COVID-19 affected model performance.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 \color{black}
 
 ## Exploratory Data Analysis
 (a) Provide any summary or other statistics/details relevant to your analytical plan and those needed to understand your final conclusions. E.g. any descriptive statistics of your time series or any feature (such as a pattern or trend) of your time series
 
+```{r}
+#| label: descriptive-plots
+#| echo: false
+
+peak_compare_tbl <- readRDS(here("output", "tables", "peak_compare_tbl.rds"))
+
+peak_compare_tbl |>
+  kable(
+    format = "latex",
+    booktabs = TRUE,
+    align = c("l", "c", "c", "c", "c"), # Center align data columns
+    caption = "Season-level peak timing and intensity summaries."
+  ) |>
+  # CHANGE 2: Add a spanning header to explicitly link the test to the groups
+  add_header_above(c(
+    " " = 1,
+    "Cohort Comparison (Welch t-test)" = 3,
+    "Reference" = 1
+  )) |>
+  kable_styling(latex_options = c("hold_position", "scale_down"))
+```
+
 \color{blue}
-The dataset did not include any data during the flu off-season (weeks 21-39 of the year) until 2003, when partial monitoring began [@CDCExpandMonitoring], and off-season reporting slowly increased until it became normal in the 2005-2006 flue season, at which point data for children and adults began routinely being collected year round [@CDCSum03]. Data included 5 years with 53 weeks instead of 52, so the 53rd weeks were dropped from the analysis (somewhat common solution to the problem based on what I've read), which obviously biases the data and introduces some mismatch in terms of year-over-year alignment. For the analysis I began the series at the onset of the 2002-03 flu season (week 40 of 2002), and modeled it as a weekly time series with a frequency of 52 weeks. There is strong annual seasonality with a relatively consistent trend of peaking in severity around week 55 (15 weeks into the flu season) although there is substantial variability in the timing and intensity of the peaks. There is a much more consistent trend of falling off to very low levels around 1-2% around week 18 (30 weeks into the flu season). Several seasons show significant abnormalities in either intensity or timing of peak flu load.
+The dataset did not include any data during the flu off-season (weeks 21-39 of the year) until 2003, when a relatively small prortion of reporters submitted some data during the off-season [@CDCExpandMonitoring] (this is possibly related to SARS being discovered around this time, but I couldn't find a definitive source attesting to that). In 2004, ILI monitoring was expanded to include collecting data on children during the off-season months, and finally, after the 2005-2006 flu season, it became the standard practice to collect data for both children and adults year round [@CDCSum03]. Data included 5 years with 53 weeks instead of 52, so the 53rd weeks were dropped from the analysis (somewhat common solution to the problem based on what I've read), which obviously biases the data and introduces some mismatch in terms of year-over-year alignment. For the analysis I began the series at the onset of the 2005-06 flu season (week 40 of 2005) due to the change in data collection methodology, and modeled it as a weekly time series with a frequency of 52 weeks. There is strong annual seasonality with a relatively consistent trend of peaking in severity around week 15 of the flu season (week 3 of the year) although there is substantial variability in the timing and intensity of the peaks. There is a much more consistent trend of falling off to very low levels around 1-2% around week 30 of the flu season (18 weeks into the year). Several seasons show significant abnormalities in either intensity or timing of peak flu load.
 
 Stationarity diagnostics are somewhat mixed, with an ADF test suggesting stationarity (p = 0.01), a KPSS test for stationarity with trend failing to reject stationarity (p = 0.10), while a KPSS test for level stationarity provided evidence against stationarity (p = 0.01). Visual inspection reveals a strong seasonality to the data, and variable amplitude in peaks suggests transforming the data to try and minimize the effect of this variance on the analysis before beginning to look at decomposition and ARIMA diagnostics.
 \color{black}
@@ -75,9 +108,13 @@ Stationarity diagnostics are somewhat mixed, with an ADF test suggesting station
 (b) Provide and discuss at least one exploratory visualization of your time series. For example, how the visualization guided/motivated any decisions about how to use/model the data or provides insights into your question’s answer
 
 \color{blue}
+![fluoverview](output/figures/flu_overview.png)
 In the main figure we can see that for most flu seasons there's a peak between 13-18 weeks into the season, but there is a reasonable amount of variation in this, with one peak happening as early as 3 weeks into the flu season, and another as late as 25 weeks into the season. This is definitely more variation than would be seen just due to deleting week 53 or the slight variation in how weeks line up year to year. Interestingly, despite the wide distribution of peaks during flu season, the trough of flu season almost universally occurs around week 30.
 
-Around the main plot I've highlighted a few flu seasons that had interesting characteristics. Subplots (a), (b) and (c) were all heavy flu years, with (b) reflecting the H1N1 (swine flu) epidemic; swine flu had a very early start in the year compared to typical flu variants, and is also the only time I've experienced hallucinations due to fever. Subplot (g) was interesting because it had two peaks during the season. Lastly, subplots (d), (e) and (f) are especially indicative of the effects COVID19 had on flu occurrence. Subplot (d) shows the flu season which included the initial spread of COVID19, which is quite likely why it has three peaks instead of one like the majority of seasons have, especially since early COVID19 strains had significant symptom overlap with influenza, and this data is related to doctor visits, not tested strains. Subplot (e) occurred during the height of non-pharmaceutical interventions intended to slow the spread (masking, social distancing, etc.)[@covid_npi], showing that there was almost no detectable flu season as a result. Subplot (f) occurred soon after the vast majority of state-level interventions had been lifted[@covid_npi], and peaked significantly earlier in the year than typical, possibly lending credence to the idea of immune debt [@immune_debt] causing people to be more vulnerable to infection after a period of low exposure.
+Around the main plot I've highlighted a few flu seasons that had interesting characteristics. Subplots (a) and (c) were both heavy flu years, with (a) reflecting the H1N1 (swine flu) epidemic; swine flu had a very early start in the year compared to typical flu variants, and is also the only time I've experienced hallucinations due to fever. Subplot (b) was noteworthy due to being an incredibly mild flu season. Subplot (g) was interesting because it had two distinct peaks during the season. Lastly, subplots (d), (e) and (f) are especially indicative of the effects COVID-19 had on flu occurrence. Subplot (d) shows the flu season which included the initial spread of COVID-19, which may explain why it has three peaks instead of one like the majority of seasons have, especially since early COVID-19 strains had significant symptom overlap with influenza, and this data is related to doctor visits, not tested strains. Subplot (e) occurred during the height of non-pharmaceutical interventions intended to slow the spread (masking, social distancing, etc.)[@covid_npi], showing that there was almost no detectable flu season as a result. Subplot (f) occurred soon after the vast majority of state-level interventions had been lifted[@covid_npi], and peaked earlier in the year than typical, possibly lending credence to the idea of immune debt [@immune_debt] causing people to be more vulnerable to infection after a period of low exposure.
+
+![acfpacf](output/figures/acf_pacf_plots.png)
+The top shorter-term ACF plot does not exhibit exponential decay, while the short-term PACF shows strong spikes at lags 1 and 2, but then is near 0 with a few random significant spikes which are to be expected just due to the number of lags being evaluated. Looking at the long-term plots, the sinusoidal appearance of the ACF is strongly indicative of a seasonal trend, and the long term PACF plot reinforces this, with lags near week 52 generally being significant.
 \color{black}
 
 ## Statistical Analysis

@@ -162,8 +162,9 @@ save_plot <- function(plot, name, format = "png", target = ".",
   
   # Helper to prompt for instructions if file exists
   interactive_choice <- function(path) {
-    msg <- paste0("File exists:\n ", path, "\nChoose: [o]verwrite, [r]ename existing, [s]kip: ")
-    ans <- tolower(trimws(readline(msg)))
+    cat("\nFile exists:\n  ", path, "\n", sep = "")
+    ans <- tolower(trimws(readline("Choose: [o]verwrite, [r]ename existing, [s]kip: ")))
+    
     if (ans %in% c("o", "overwrite")) "overwrite"
     else if (ans %in% c("r", "rename")) "rename"
     else "skip"
