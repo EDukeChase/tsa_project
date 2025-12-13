@@ -37,6 +37,9 @@ save_plot <- make_save_plot(
   default_target = "output/figures",
   default_format = c("png", "svg")
 )
+
+# Default color palette
+nav_cols <- scico::scico(6, palette = "navia")
 ```
 
 # Data Cleaning
@@ -699,8 +702,8 @@ Differencing diagnostics gave mixed recommendations, especially for the Full His
 ```{r}
 #| label: model_search
 
-# Define the model configs to run
-cfg <- tibble::tribble(
+# Define the models to run
+cfg <- tribble(
   ~dataset, ~d, ~D, ~tag,
   "pp",      0,  0, "pp_d0_D0",
   "pp",      0,  1, "pp_d0_D1",
@@ -712,86 +715,86 @@ cfg <- tibble::tribble(
   "fh",     NA, NA, "fh_auto"
 )
 
+# Helper to get correct train/test series and lambda
 get_series <- function(dataset) {
-  if (dataset == "pp") list(train = train_pp_ts, test = test_pp_ts, lambda = lambda_pp)
-  else                list(train = train_fh_ts, test = test_fh_ts, lambda = lambda_fh)
+  if (dataset == "pp") {
+    list(train = train_pp_ts, test = test_pp_ts, lambda = lambda_pp)
+  } else {
+    list(train = train_fh_ts, test = test_fh_ts, lambda = lambda_fh)
+  }
 }
 
+# Fit SARIMA model for a given model
 fit_model <- function(dataset, d, D, tag) {
   s <- get_series(dataset)
 
-  fit <- if (is.na(d) || is.na(D)) {
-    auto.arima(
+  if (is.na(d) || is.na(D)) {
+    fit <- auto.arima(
       s$train,
-      seasonal = TRUE,
-      lambda   = s$lambda,
-      biasadj  = TRUE,
-      stepwise = FALSE,
+      seasonal     = TRUE,
+      lambda       = s$lambda,
+      biasadj      = TRUE,
+      stepwise     = FALSE,
       approximation = FALSE,
       max.p = 3, max.q = 3, max.P = 2, max.Q = 2
     )
   } else {
-    auto.arima(
+    fit <- auto.arima(
       s$train,
       d = d, D = D,
-      seasonal = TRUE,
-      lambda   = s$lambda,
-      biasadj  = TRUE,
-      stepwise = FALSE,
+      seasonal     = TRUE,
+      lambda       = s$lambda,
+      biasadj      = TRUE,
+      stepwise     = FALSE,
       approximation = FALSE,
       max.p = 3, max.q = 3, max.P = 2, max.Q = 2
     )
   }
 
-  fc  <- forecast(fit, h = length(s$test), biasadj = TRUE)
-  acc <- accuracy(fc, s$test)
-
-  tibble::tibble(
-    tag = tag,
-    dataset = dataset,
-    d = d, D = D,
-    p = fit$arma[1], q = fit$arma[2], P = fit$arma[3], Q = fit$arma[4],
-    AICc = fit$aicc,
-    RMSE_test = unname(acc["Test set","RMSE"]),
-    MAE_test  = unname(acc["Test set","MAE"])
-  )
+  fit
 }
 
-safe_fit_model <- purrr::safely(fit_model, otherwise = NULL, quiet = TRUE)
+# Prevents one model having issues from making the whole time spent running models wasted
+safe_fit_model <- safely(fit_model, otherwise = NULL, quiet = TRUE)
 
-# Run multiple model options and compare to auto arima
+# Fit all models from `cfg` in parallel and cache the models for later use
 model_search_out <- cache_computation({
-
+  
   out <- cfg |>
-    dplyr::mutate(
-      out = furrr::future_pmap(
+    mutate(
+      res = future_pmap(
         .l = list(dataset, d, D, tag),
         .f = safe_fit_model,
-        .options = furrr::furrr_options(seed = TRUE)
+        .options = furrr_options(seed = TRUE)
       )
     ) |>
-    dplyr::mutate(
-      res = purrr::map(out, "result"),
-      err = purrr::map(out, "error")
+    mutate(
+      fit = map(res, "result"),
+      err = map(res, "error")
+    )
+  
+  # Keep successful model fits
+  models_tbl <- out |>
+    filter(map_lgl(err, is.null)) |>
+    transmute(
+      tag, dataset, d, D, fit
     )
 
-  results_tbl <- out |>
-    dplyr::filter(purrr::map_lgl(err, is.null)) |>
-    dplyr::select(res) |>
-    tidyr::unnest(res) |>
-    dplyr::arrange(dataset, RMSE_test)
-
+    # Document failed models + error messages
   errors_tbl <- out |>
-    dplyr::filter(!purrr::map_lgl(err, is.null)) |>
-    dplyr::transmute(
+    filter(!map_lgl(err, is.null)) |>
+    transmute(
       tag, dataset, d, D,
-      error = purrr::map_chr(err, ~ conditionMessage(.x))
+      error = map_chr(err, ~ conditionMessage(.x))
     )
 
-  list(results_tbl = results_tbl, errors_tbl = errors_tbl)
-
+  # What gets cached
+  list(
+    models_tbl = models_tbl,
+    errors_tbl = errors_tbl
+  )
 },
-cache_filename = "arima_model_search_tbl_cache.rds",
+cache_filename = "arima_model_search_models_cache.rds",
 deps = list(
   cfg = cfg,
   lambda_pp = lambda_pp,
@@ -803,12 +806,67 @@ deps = list(
 ),
 parallel = TRUE)
 
-results_tbl <- model_search_out$results_tbl
-errors_tbl  <- model_search_out$errors_tbl
+models_tbl <- model_search_out$models_tbl
+errors_tbl <- model_search_out$errors_tbl
 
-results_tbl
+models_tbl
 errors_tbl
 ```
+
+```{r}
+#| label: model_metrics
+#| 
+metrics_tbl <- models_tbl |>
+  mutate(
+    # Extract AICc from fitted models
+    AICc = map_dbl(fit, ~ .x$aicc),
+
+    # Pull ARIMA orders (p, q, P, Q) from the arma vector
+    arma_vec = map(fit, ~ .x$arma),
+    p = map_int(arma_vec, 1L),
+    q = map_int(arma_vec, 2L),
+    P = map_int(arma_vec, 3L),
+    Q = map_int(arma_vec, 4L),
+
+    # In-sample accuracy
+    train_acc  = map(fit, ~ forecast::accuracy(.x)["Training set", c("RMSE", "MAE")]),
+    RMSE_train = map_dbl(train_acc, 1L),
+    MAE_train  = map_dbl(train_acc, 2L),
+
+    # Out-of-sample accuracy on test season (descriptive only)
+    test_acc = map2(fit, dataset, ~ {
+      s  <- get_series(.y)
+      fc <- forecast::forecast(.x, h = length(s$test), biasadj = TRUE)
+      forecast::accuracy(fc, s$test)["Test set", c("RMSE", "MAE")]
+    }),
+    RMSE_test = map_dbl(test_acc, 1L),
+    MAE_test  = map_dbl(test_acc, 2L)
+  ) |>
+  select(
+    tag, dataset, d, D, p, q, P, Q,
+    AICc, RMSE_train, MAE_train, RMSE_test, MAE_test
+  ) |>
+  arrange(dataset, AICc)
+
+metrics_tbl |> 
+  select(-tag) |> 
+  kable(digits = 3, booktabs = TRUE) |> 
+  add_header_above(c(" " = 1, "Model parameters" = 6, "In-Sample Accuracy" = 3, "Out-of-Sample Accuracy" = 2)) |> 
+  kable_styling(bootstrap_options = "striped") |> 
+  row_spec(c(1, 6), background = nav_cols[5])
+```
+
+Rough model breakdown
+- Models look at last two weeks' ILI levels (p = 2)
+  - $t-1, t-2$
+- Models look at last two years of seasonal data for the same week (P = 2)
+  - $t-52, t-104$
+- Models look at noise from previous week
+  - $t-1$
+
+
+
+
 
 
 # Figures and Tables
@@ -932,7 +990,7 @@ save_plot(acf_pacf_grid, "acf_pacf")
 
 # How to import into paper and format
 
-# premodel_tbl <- readRDS(here::here("output", "tables", "premodel_checks_tbl.rds"))
+# premodel_tbl <- readRDS(here("output", "tables", "premodel_checks_tbl.rds"))
 # 
 # premodel_tbl |>
 #   kable(format = "latex", booktabs = TRUE,
