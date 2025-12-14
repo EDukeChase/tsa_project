@@ -39,7 +39,7 @@ save_plot <- make_save_plot(
 )
 
 # Default color palette
-nav_cols <- scico::scico(6, palette = "navia")
+nav_cols <- RColorBrewer::brewer.pal(8, "Set2")
 ```
 
 # Data Cleaning
@@ -293,7 +293,7 @@ peak_summary_tbl <- function(season_peaks) {
       .groups = "drop"
     ) |>
     mutate(
-      peak_week_minmax = paste0(peak_week_min, "–", peak_week_max)
+      peak_week_minmax = paste0(peak_week_min, "-", peak_week_max)
     ) |>
     select(
       seasons,
@@ -312,7 +312,7 @@ peak_long_tbl <- function(peak_summary) {
         seasons          = "Number of seasons",
         peak_week_median = "Peak week (median)",
         peak_week_iqr    = "Peak week (IQR)",
-        peak_week_minmax = "Peak week (min–max)",
+        peak_week_minmax = "Peak week (min-max)",
         peak_ili_median  = "Peak ILI% (median)",
         peak_ili_iqr     = "Peak ILI% (IQR)",
         amplitude_median = "Season amplitude (median)",
@@ -339,7 +339,7 @@ peaks_fh <- season_peaks_tbl(ili_fh)
 # Welch Test (PP vs PE) on season-level metrics
 welch_pvals <- tibble( 
   Metric = c("Peak ILI% (median)", "Season amplitude (median)", "Peak week (median)"), 
-  `Welch p (CE vs CO)` = c( 
+  `Welch p (PP vs PE)` = c( 
     fmt_p(t.test(peaks_pp$peak_ili, peaks_pe$peak_ili, alternative = "two.sided")$p.value),
     fmt_p(t.test(peaks_pp$amplitude, peaks_pe$amplitude, alternative = "two.sided")$p.value),
     fmt_p(t.test(peaks_pp$peak_week, peaks_pe$peak_week, alternative = "two.sided")$p.value) 
@@ -347,9 +347,9 @@ welch_pvals <- tibble(
   )
 
 # ---- summaries into long form ----
-ce_long <- peak_long_tbl(peak_summary_tbl(peaks_pp)) |> rename(`Pre-Pandemic (2005–2018)` = Value)
-co_long <- peak_long_tbl(peak_summary_tbl(peaks_pe)) |> rename(`Pandemic Era (2019–2025)`       = Value)
-ci_long <- peak_long_tbl(peak_summary_tbl(peaks_fh)) |> rename(`Full History (2005–2025)`= Value)
+ce_long <- peak_long_tbl(peak_summary_tbl(peaks_pp)) |> rename(`Pre-Pandemic (2005-2018)` = Value)
+co_long <- peak_long_tbl(peak_summary_tbl(peaks_pe)) |> rename(`Pandemic Era (2019-2025)`       = Value)
+ci_long <- peak_long_tbl(peak_summary_tbl(peaks_fh)) |> rename(`Full History (2005-2025)`= Value)
 
 # ---- combine ----
 peak_compare_tbl <- ce_long |>
@@ -358,11 +358,11 @@ peak_compare_tbl <- ce_long |>
   left_join(ci_long, by = "Metric") |>      # Put Full History last as reference
   mutate(
     # Optional: Replace NA p-values with empty strings for a cleaner look
-    `Welch p (CE vs CO)` = replace_na(`Welch p (CE vs CO)`, "")
+    `Welch p (PP vs PE)` = replace_na(`Welch p (PP vs PE)`, "")
   ) |>
   rename(
     `Season-level summary` = Metric,
-    `P-value` = `Welch p (CE vs CO)` # Shorten name since header will add context
+    `P-value` = `Welch p (PP vs PE)` # Shorten name since header will add context
   )
 
 # ---- render ----
@@ -411,9 +411,9 @@ make_profile_plot <- function(df, title) {
     theme_minimal()
 }
 
-p_fh <- make_profile_plot(ili_fh, "Full History (2005–2025)")
-p_pp <- make_profile_plot(ili_pp, "Pre-Pandemic (2005–2018)")
-p_pe <- make_profile_plot(ili_pe, "Pandemic Era (2019–2025)")
+p_fh <- make_profile_plot(ili_fh, "Full History (2005-2025)")
+p_pp <- make_profile_plot(ili_pp, "Pre-Pandemic (2005-2018)")
+p_pe <- make_profile_plot(ili_pe, "Pandemic Era (2019-2025)")
 
 # Use shared scales
 y_max <- max(
@@ -538,7 +538,7 @@ p_fh_bc <- make_ts_plot(
 data_transformation_plot <- (p_pp_raw | p_fh_raw) /
 (p_pp_bc  | p_fh_bc) +
   plot_annotation(
-    title = "Variance stabilization on training sets (Box–Cox)",
+    title = "Variance stabilization on training sets (Box-Cox)",
     subtitle = bquote(hat(lambda) * " estimated with Guerrero method")
   )
 
@@ -555,8 +555,8 @@ As can be seen, the transformed training datasets visible in the bottom row exhi
 stl_pp <- stl(train_pp_bc_ts, s.window = "periodic", robust = TRUE)
 stl_fh <- stl(train_fh_bc_ts, s.window = "periodic", robust = TRUE)
 
-p_stl_pp <- autoplot(stl_pp) + ggtitle("STL decomposition (PP train, Box–Cox)")
-p_stl_fh <- autoplot(stl_fh) + ggtitle("STL decomposition (FH train, Box–Cox)")
+p_stl_pp <- autoplot(stl_pp) + ggtitle("STL decomposition (PP train, Box-Cox)")
+p_stl_fh <- autoplot(stl_fh) + ggtitle("STL decomposition (FH train, Box-Cox)")
 
 decomp_plot <- (p_stl_pp | p_stl_fh) +
   plot_annotation(title = "STL decomposition on transformed training series")
@@ -623,7 +623,7 @@ acf_pacf_grid <-
   plot_annotation(
     title = "ACF/PACF diagnostics on transformed training sets",
     subtitle = "Short-term (≤26 weeks) and long-term (≤104 weeks) structure; annual seasonality highlighted near lag 52",
-    caption = "Shading marks the annual seasonal cycle region (weeks 50–54)."
+    caption = "Shading marks the annual seasonal cycle region (weeks 50-54)."
   )
 
 acf_pacf_grid
@@ -699,6 +699,111 @@ premodel_wide
 Differencing diagnostics gave mixed recommendations, especially for the Full History series. We therefore treat differencing orders as candidate hyperparameters and select among them using out-of-sample forecast performance on the held-out season, alongside residual diagnostics.
 
 # Model Building
+
+```{r}
+#| label: helper_eval-metrics
+
+score_ts_model <- function(fit, dataset, tag , biasadj = TRUE) {
+  s <- get_series(dataset)
+  
+  fc <- forecast(fit, h = length(s$test), biasadj = biasadj)
+  
+  acc <- accuracy(fc, s$test)
+  
+  # Enter default (S)ARIMA parameters in case using HW model
+  p <- NA_real_
+  d <- NA_real_
+  q <- NA_real_
+  P <- NA_real_
+  D <- NA_real_
+  Q <- NA_real_
+  AICc <- NA_real_
+  
+  if (inherits(fit, "Arima")) {
+    arma <- fit$arma
+    p <- arma[1]
+    q <- arma[2]
+    P <- arma[3]
+    Q <- arma[4]
+    d <- arma[6]
+    D <- arma[7]
+    AICc <- fit$aicc
+  }
+  
+  tibble(
+    tag = tag, dataset = dataset,
+    p = p, d = d, q = q,
+    P = P, D = D, Q = Q,
+    AICc = AICc,
+    RMSE_train = unname(acc["Training set", "RMSE"]),
+    MAE_train  = unname(acc["Training set", "MAE"]),
+    RMSE_test  = unname(acc["Test set",   "RMSE"]),
+    MAE_test   = unname(acc["Test set",   "MAE"])
+  )
+}
+```
+
+## Seasonal Naive Model
+```{r}
+#| label: model_seas-naive
+
+fit_snaive <- function(dataset) {
+  s <- get_series(dataset)
+  
+  Arima(
+    s$train,
+    order = c(0, 0, 0),
+    seasonal = c(0, 1, 0),
+    lambda = s$lambda,
+    include.constant = FALSE
+  )
+}
+
+fit_pp_snaive <- fit_snaive("pp")
+fit_fh_snaive <- fit_snaive("fh")
+```
+
+```{r}
+#| label: metrics_snaive
+
+metrics_pp_snaive <- score_ts_model(fit_snaive_pp, "pp", "snaive_pp")
+metrics_fh_snaive <- score_ts_model(fit_snaive_fh, "fh", "snaive_fh")
+
+metrics_pp_snaive
+metrics_fh_snaive
+```
+
+
+## Holt-Winters Model
+```{r}
+#| label: model_holt-winters
+
+fit_hw <- function(dataset) {
+  s <- get_series(dataset)
+  
+  HoltWinters(
+    x = s$train,
+    seasonal = "additive"
+  )
+}
+
+fit_pp_hw <- fit_hw("pp")
+fit_fh_hw <- fit_hw("fh")
+```
+
+```{r}
+#| label: metrics_hw
+
+metrics_fh_hw <- score_ts_model(fit_fh_hw, "fh", "hw_fh")
+metrics_pp_hw <- score_ts_model(fit_pp_hw, "pp", "hw_pp")
+
+metrics_fh_hw
+metrics_pp_hw
+```
+
+
+
+## SARIMA
 ```{r}
 #| label: model_search
 
@@ -814,49 +919,60 @@ errors_tbl
 ```
 
 ```{r}
-#| label: model_metrics
-#| 
-metrics_tbl <- models_tbl |>
+#| label: metrics_sarima
+
+sarima_metrics_tbl <- models_tbl |> 
   mutate(
-    # Extract AICc from fitted models
-    AICc = map_dbl(fit, ~ .x$aicc),
-
-    # Pull ARIMA orders (p, q, P, Q) from the arma vector
-    arma_vec = map(fit, ~ .x$arma),
-    p = map_int(arma_vec, 1L),
-    q = map_int(arma_vec, 2L),
-    P = map_int(arma_vec, 3L),
-    Q = map_int(arma_vec, 4L),
-
-    # In-sample accuracy
-    train_acc  = map(fit, ~ forecast::accuracy(.x)["Training set", c("RMSE", "MAE")]),
-    RMSE_train = map_dbl(train_acc, 1L),
-    MAE_train  = map_dbl(train_acc, 2L),
-
-    # Out-of-sample accuracy on test season (descriptive only)
-    test_acc = map2(fit, dataset, ~ {
-      s  <- get_series(.y)
-      fc <- forecast::forecast(.x, h = length(s$test), biasadj = TRUE)
-      forecast::accuracy(fc, s$test)["Test set", c("RMSE", "MAE")]
-    }),
-    RMSE_test = map_dbl(test_acc, 1L),
-    MAE_test  = map_dbl(test_acc, 2L)
-  ) |>
-  select(
-    tag, dataset, d, D, p, q, P, Q,
-    AICc, RMSE_train, MAE_train, RMSE_test, MAE_test
-  ) |>
+    # Compute metrics for each SARIMA model candidate
+    metrics = pmap(
+      list(
+        fit = fit,
+        dataset = dataset,
+        tag = tag
+      ),
+      ~ score_ts_model(
+        fit = ..1,
+        dataset = ..2,
+        tag = ..3
+      )
+    )
+  ) |> 
+  transmute(metrics) |> 
+  unnest(cols = metrics) |> 
   arrange(dataset, AICc)
 
-metrics_tbl |> 
+sarima_metrics_tbl |> 
   select(-tag) |> 
   kable(digits = 3, booktabs = TRUE) |> 
   add_header_above(c(" " = 1, "Model parameters" = 6, "In-Sample Accuracy" = 3, "Out-of-Sample Accuracy" = 2)) |> 
   kable_styling(bootstrap_options = "striped") |> 
   row_spec(c(1, 6), background = nav_cols[5])
+
+# Store best SARIMA models and table rows
+fit_fh_sarima <- models_tbl |> 
+  filter(dataset == "fh", d == 0, D == 0) |> 
+  pull(fit)
+fit_fh_sarima <- fit_fh_sarima[[1]]
+
+metrics_fh_sarima <- score_ts_model(
+  fit = fit_fh_sarima,
+  dataset = "fh",
+  tag = "fh_sarima"
+)
+
+fit_pp_sarima <- models_tbl |> 
+  filter(dataset == "pp", d == 0, D == 0) |> 
+  pull(fit)
+fit_pp_sarima <- fit_pp_sarima[[1]]
+
+metrics_pp_sarima <- score_ts_model(
+  fit = fit_pp_sarima,
+  dataset = "pp",
+  tag = "pp_sarima"
+)
 ```
 
-Rough model breakdown
+Rough SARIMA model breakdown
 - Models look at last two weeks' ILI levels (p = 2)
   - $t-1, t-2$
 - Models look at last two years of seasonal data for the same week (P = 2)
@@ -864,7 +980,489 @@ Rough model breakdown
 - Models look at noise from previous week
   - $t-1$
 
+```{r}
+#| label: compare_models
 
+all_metrics <- bind_rows(
+  metrics_pp_snaive,
+  metrics_pp_hw,
+  metrics_pp_sarima,
+  metrics_fh_snaive,
+  metrics_fh_hw,
+  metrics_fh_sarima
+)
+
+all_metrics |> 
+  select(-tag) |>
+  kable(digits = 3, booktabs = TRUE) |> 
+  add_header_above(c(" " = 1, "Model parameters" = 6, "In-Sample Accuracy" = 3, "Out-of-Sample Accuracy" = 2)) |>
+  kable_styling(bootstrap_options = "striped")
+```
+
+# Model Prediction
+## Cumulative Mean Average Error
+
+Due to the possibility of the seasonally naive model getting lucky with a really good estimate right off the bat, I'll decide a priori a minimum number of weeks to include in the CMAE calculation ($h_{min}$) to evaluate before considering if the more sophisticated models actually perform better than the seasonal naive model. To be objective about this, I'm going to define $h_{min}$ before running any analysis, and base it off of typical staffing timelines and supply ordering timelines that might be present in a medical office. Most skilled medical staff in the US work in situations where the schedule must be posted 4-6 weeks in advance [@wangEvaluatingImpactFlexibility2009]. I couldn't find anything concrete on timelines of requesting travel nurses and them arriving, however travel nurse contracts usually vary from about 2-26 weeks in length [@rnHowLongAre2025], and nurses planning on working as travel nurses are given the advice that it usually takes 1-5 weeks between beginning to apply for traveling nursing jobs and actually starting at them [@schmidtHowLongDoes2018]. For the time it takes between ordering and receiving supplies, typically this is very low, however in times of increased demand (e.g., the 2009 H1N1 flu season), delivery times for PPE were increased in the range of 2 to 10 weeks [@patelPersonalProtectiveEquipment2017]. Taking all of these together, I will set the minimum horizon for evaluating CMAE to $h_{min} = 4$ weeks. That is, I will only consider the more complex models to have a meaningful advantage over the seasonal naive model if their CMAE is lower from at least week 4 onwards.
+
+```{r}
+#| label: helper_cmae
+
+# Helper to compute CMAE(h) for a model
+compute_cmae <- function(fit, dataset, tag, h_max = 52, biasadj = TRUE) {
+  s <- get_series(dataset)
+  
+  H <- min(h_max, length(s$test))
+  
+  y_true <- as.numeric(s$test)[seq_len(H)]
+  
+  if (inherits(fit, "forecast")) {
+    y_pred <- as.numeric(fit$mean)[seq_len(H)]
+  } else {
+    fc <- forecast(fit, h = H, biasadj = biasadj)
+    y_pred <- as.numeric(fc$mean)
+  }
+  
+  abs_err <- abs(y_true - y_pred)
+  
+  tibble(
+    tag = tag,
+    dataset = dataset,
+    h = seq_len(H),
+    abs_err = abs_err,
+    CMAE = cumsum(abs_err) / h
+  )
+}
+
+# Helper to compute h* for a model vs seasonal naive baseline
+eff_horiz <- function(cmae_model, cmae_snaive, h_min = 4L) {
+  joined <- inner_join(
+    cmae_model  |> select(dataset, h, CMAE_model  = CMAE),
+    cmae_snaive |> select(dataset, h, CMAE_snaive = CMAE),
+    by = c("dataset", "h")
+  )
+  
+  ok <- joined |>
+    filter(
+      h >= h_min,
+      CMAE_model <= CMAE_snaive
+    )
+  
+  if (nrow(ok) == 0L) {
+    return(0L)
+  }
+  
+  max(ok$h)
+}
+
+# Helper to create plots
+make_fc_df <- function(fit, dataset, tag, h_max = 52,
+                       level = 95, biasadj = TRUE) {
+  s <- get_series(dataset)
+  
+  # forecast horizon = min(h_max, length of test set)
+  H <- min(h_max, length(s$test))
+  
+  fc <- forecast(
+    fit,
+    h       = H,
+    level   = level,
+    biasadj = biasadj
+  )
+  
+  tibble(
+    dataset     = dataset,
+    tag         = tag,
+    season_week = seq_len(H),
+    y_true      = as.numeric(s$test)[seq_len(H)],
+    mean        = as.numeric(fc$mean),
+    lo          = as.numeric(fc$lower[, 1]),
+    hi          = as.numeric(fc$upper[, 1])
+  )
+}
+```
+
+```{r}
+#| label: compute-cmae_all-models
+ 
+# Seasonal Naive Baseline
+cmae_pp_snaive <- compute_cmae(fit_pp_snaive, "pp", "pp_snaive", h_max = 52)
+cmae_fh_snaive <- compute_cmae(fit_fh_snaive, "fh", "fh_snaive", h_max = 52)
+
+# Holt-Winters Comparison
+cmae_pp_hw <- compute_cmae(fit_pp_hw, "pp", "pp_hw", h_max = 52, biasadj = FALSE)
+cmae_fh_hw <- compute_cmae(fit_fh_hw, "fh", "fh_hw", h_max = 52, biasadj = FALSE)
+
+# SARIMA Models
+cmae_pp_sarima <- compute_cmae(fit_pp_sarima, "pp", "pp_sarima", h_max = 52)
+cmae_fh_sarima <- compute_cmae(fit_fh_sarima, "fh", "fh_sarima", h_max = 52)
+
+# Combine into one object
+cmae_all <- bind_rows(
+  cmae_pp_snaive, cmae_fh_snaive,
+  cmae_pp_hw, cmae_fh_hw,
+  cmae_pp_sarima, cmae_fh_sarima
+)
+```
+
+```{r}
+#| label: compute_eff-horiz
+
+h_min <- 4L
+
+# Pre-pandemic dataset
+h_star_pp_sarima <- eff_horiz(cmae_pp_sarima, cmae_pp_snaive, h_min = h_min)
+h_star_pp_hw <- eff_horiz(cmae_pp_hw, cmae_pp_snaive, h_min = h_min)
+
+# Full history dataset
+h_star_fh_sarima <- eff_horiz(cmae_fh_sarima, cmae_fh_snaive, h_min = h_min)
+h_star_fh_hw <- eff_horiz(cmae_fh_hw, cmae_fh_snaive, h_min = h_min)
+
+eff_horiz_tbl <- tibble(
+  dataset = c("pp", "pp", "fh", "fh"),
+  tag = c("pp_sarima", "pp_hw", "fh_sarima", "fh_hw"),
+  h_min = h_min,
+  h_star = c(h_star_pp_sarima, h_star_pp_hw,
+             h_star_fh_sarima, h_star_fh_hw)
+)
+
+eff_horiz_tbl
+```
+
+```{r}
+#| label: fc_tidy_all
+
+# Pre-pandemic (pp)
+pp_fc_all <- bind_rows(
+  make_fc_df(fit_pp_snaive, "pp", "snaive", h_max = 52),
+  make_fc_df(fit_pp_hw,     "pp", "HW",     h_max = 52, biasadj = FALSE),
+  make_fc_df(fit_pp_sarima, "pp", "SARIMA", h_max = 52)
+)
+
+# Full history (fh)
+fh_fc_all <- bind_rows(
+  make_fc_df(fit_fh_snaive, "fh", "snaive", h_max = 52),
+  make_fc_df(fit_fh_hw,     "fh", "HW",     h_max = 52, biasadj = FALSE),
+  make_fc_df(fit_fh_sarima, "fh", "SARIMA", h_max = 52)
+)
+
+# Distinct test observations for each dataset
+pp_obs <- pp_fc_all |> distinct(season_week, y_true)
+fh_obs <- fh_fc_all |> distinct(season_week, y_true)
+
+label_models <- c(
+  snaive = "Seasonal naive",
+  HW     = "Holt-Winters",
+  SARIMA = "SARIMA"
+)
+
+pp_fc_all <- pp_fc_all |>
+  mutate(tag = factor(tag, levels = c("snaive", "HW", "SARIMA"),
+                      labels = label_models))
+
+fh_fc_all <- fh_fc_all |>
+  mutate(tag = factor(tag, levels = c("snaive", "HW", "SARIMA"),
+                      labels = label_models))
+```
+
+```{r}
+#| label: cmae_tidy_all
+
+cmae_all <- bind_rows(
+  cmae_pp_snaive,
+  cmae_pp_hw,
+  cmae_pp_sarima,
+  cmae_fh_snaive,
+  cmae_fh_hw,
+  cmae_fh_sarima
+)
+
+# Clean up model labels (same mapping as before)
+cmae_all <- cmae_all |>
+  mutate(
+    model = case_when(
+      grepl("snaive", tag)  ~ "Seasonal naive",
+      grepl("hw",     tag)  ~ "Holt-Winters",
+      grepl("sarima", tag)  ~ "SARIMA",
+      TRUE                  ~ tag
+    ),
+    model = factor(model, levels = c("Seasonal naive", "Holt-Winters", "SARIMA"))
+  )
+
+pp_cmae_all <- cmae_all |> filter(dataset == "pp")
+fh_cmae_all <- cmae_all |> filter(dataset == "fh")
+
+# Shared legend order
+model_levels <- c("Observed", "Seasonal naive", "Holt-Winters", "SARIMA")
+
+# Shared colors
+model_cols <- c(
+  "Observed"       = "black",
+  "Seasonal naive" = nav_cols[4],
+  "Holt-Winters"   = nav_cols[2],
+  "SARIMA"         = nav_cols[1]
+)
+
+# Shared linetypes
+model_lty <- c(
+  "Observed"       = "solid",
+  "Seasonal naive" = "solid",
+  "Holt-Winters"   = "dotted",
+  "SARIMA"         = "dashed"
+)
+
+# Shared line widths
+model_lw <- c(
+  "Observed"       = 1.2,
+  "Seasonal naive" = 0.9,
+  "Holt-Winters"   = 0.9,
+  "SARIMA"         = 0.9
+)
+```
+
+```{r}
+#| label: plot_pp_test_fc
+
+gg_pp_test <- ggplot() +
+  # True test series (Observed)
+  geom_line(
+    data = pp_obs,
+    aes(x = season_week, y = y_true,
+        colour   = "Observed",
+        linetype = "Observed",
+        linewidth = "Observed")
+  ) +
+  # Forecast intervals (HW + SARIMA only)
+  geom_ribbon(
+    data = pp_fc_all |> dplyr::filter(tag != "Seasonal naive"),
+    aes(x = season_week, ymin = lo, ymax = hi, fill = tag),
+    alpha = 0.15
+  ) +
+  # Forecast means
+  geom_line(
+    data = pp_fc_all,
+    aes(x = season_week, y = mean,
+        colour   = tag,
+        linetype = tag,
+        linewidth = tag)
+  ) +
+  scale_colour_manual(
+    values = model_cols,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_fill_manual(
+    values = model_cols,
+    breaks = model_levels[-1],   # no fill for Observed
+    drop   = FALSE
+  ) +
+  scale_linetype_manual(
+    values = model_lty,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_linewidth_manual(
+    values = model_lw,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  labs(
+    title    = "Pre-pandemic test period",
+    x        = "Week into flu season",
+    y        = "Weighted ILI (%)",
+    colour   = "Model",
+    fill     = "Model",
+    linetype = "Model",
+    linewidth = "Model"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+gg_fh_test <- ggplot() +
+  # Observed full-history test season
+  geom_line(
+    data = fh_obs,
+    aes(x = season_week, y = y_true,
+        colour   = "Observed",
+        linetype = "Observed",
+        linewidth = "Observed")
+  ) +
+  # Forecast intervals (HW + SARIMA only)
+  geom_ribbon(
+    data = fh_fc_all |> dplyr::filter(tag != "Seasonal naive"),
+    aes(x = season_week, ymin = lo, ymax = hi, fill = tag),
+    alpha = 0.15
+  ) +
+  # Forecast means
+  geom_line(
+    data = fh_fc_all,
+    aes(x = season_week, y = mean,
+        colour   = tag,
+        linetype = tag,
+        linewidth = tag)
+  ) +
+  scale_colour_manual(
+    values = model_cols,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_fill_manual(
+    values = model_cols,
+    breaks = model_levels[-1],  # no fill for Observed
+    drop   = FALSE
+  ) +
+  scale_linetype_manual(
+    values = model_lty,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_linewidth_manual(
+    values = model_lw,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  labs(
+    title    = "Full-history test period",
+    x        = "Week into flu season",
+    y        = "Weighted ILI (%)",
+    colour   = "Model",
+    fill     = "Model",
+    linetype = "Model",
+    linewidth = "Model"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Map tags -> model labels like you did for cmae_all
+eff_marks <- eff_horiz_tbl |>
+  mutate(
+    model = case_when(
+      grepl("sarima", tag) ~ "SARIMA",
+      grepl("hw",     tag) ~ "Holt-Winters",
+      TRUE                 ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(model), h_star > 0L)
+
+# Join to get CMAE(h*) for each dataset/model
+eff_marks_plot <- eff_marks |>
+  left_join(
+    cmae_all,
+    by = c("dataset", "model" = "model", "h_star" = "h")
+  ) |>
+  rename(CMAE_star = CMAE)
+```
+
+```{r}
+gg_pp_cmae <- ggplot(pp_cmae_all,
+                     aes(x = h, y = CMAE,
+                         colour   = model,
+                         linetype = model,
+                         linewidth = model)) +
+  geom_line() +
+  geom_vline(xintercept = h_min, linetype = "dotted", colour = "grey40") +
+  geom_point(
+    data = eff_marks_plot |> dplyr::filter(dataset == "pp"),
+    aes(x = h_star, y = CMAE_star, colour = model),
+    size = 2
+  ) +
+  scale_colour_manual(
+    values = model_cols,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_linetype_manual(
+    values = model_lty,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_linewidth_manual(
+    values = model_lw,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  labs(
+    title = "Pre-pandemic CMAE by forecast horizon",
+    x     = "Forecast horizon h (weeks ahead)",
+    y     = "CMAE(h), Weighted ILI (%)",
+    colour   = "Model",
+    linetype = "Model",
+    linewidth = "Model"
+  ) +
+  annotate(
+    "text",
+    x = h_min + 0.5, y = Inf,
+    label = sprintf("h[min] == %d", h_min),
+    parse = TRUE,
+    vjust = 1.5, hjust = 0, size = 3
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+gg_fh_cmae <- ggplot(
+  fh_cmae_all,
+  aes(x = h, y = CMAE,
+      colour   = model,
+      linetype = model,
+      linewidth = model)
+) +
+  geom_line() +
+  geom_vline(xintercept = h_min, linetype = "dotted", colour = "grey40") +
+  geom_point(
+    data = eff_marks_plot |> dplyr::filter(dataset == "fh"),
+    aes(x = h_star, y = CMAE_star, colour = model),
+    size = 2
+  ) +
+  scale_colour_manual(
+    values = model_cols,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_linetype_manual(
+    values = model_lty,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  scale_linewidth_manual(
+    values = model_lw,
+    breaks = model_levels,
+    drop   = FALSE
+  ) +
+  labs(
+    title = "Full-history CMAE by forecast horizon",
+    x     = "Forecast horizon h (weeks ahead)",
+    y     = "CMAE(h), Weighted ILI (%)",
+    colour   = "Model",
+    linetype = "Model",
+    linewidth = "Model"
+  ) +
+  annotate(
+    "text",
+    x = h_min + 0.5, y = Inf,
+    label = sprintf("h[min] == %d", h_min),
+    parse = TRUE,
+    vjust = 1.5, hjust = 0, size = 3
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+forecast_cmae_grid <-
+  (gg_pp_test | gg_pp_cmae) /
+  (gg_fh_test | gg_fh_cmae) +
+  plot_annotation(
+    title = "Forecast performance by model and dataset",
+    subtitle = "Left: one-season-ahead forecasts over the test season.\nRight: cumulative mean absolute error as horizon increases."
+  ) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "right")
+
+forecast_cmae_grid
+```
 
 
 
@@ -994,7 +1592,7 @@ save_plot(acf_pacf_grid, "acf_pacf")
 # 
 # premodel_tbl |>
 #   kable(format = "latex", booktabs = TRUE,
-#         caption = "Pre-modeling checks on Box–Cox transformed training sets.") |>
+#         caption = "Pre-modeling checks on Box-Cox transformed training sets.") |>
 #   kable_styling(latex_options = "hold_position")
 
 premodel_wide
@@ -1005,13 +1603,17 @@ saveRDS(premodel_wide, here("output", "tables", "premodel_wide_tbl.rds"))
 
 ## Model Building
 ```{r}
-#| label: model_building_table
+#| label: model_eval_tables
 #| eval: false
 #| include: false
 
+# SARIMA model selection table w/ models
 saveRDS(results_tbl, here("output", "tables", "arima_model_selection_tbl.rds"))
 if (nrow(errors_tbl) > 0) {
   saveRDS(errors_tbl, here("output", "tables", "model_selection_errors_tbl.rds"))
 }
+
+# All model comparison table
+saveRDS(all_metrics, here("output", "tables", "model_comparison_tbl.rds"))
 ```
 

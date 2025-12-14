@@ -42,7 +42,7 @@ The data is a good choice because it looks at flu-like illness prevalence throug
 \color{blue}    
 I'll have to get rid of extraneous variables that won't be used in my data, such as region (not relevant because I'm looking at the national level), or age makeup of patients. The other big issue I'll have to deal with is what to do with years that have 53 weeks instead of 52; my plan at the moment is to naively drop week 53, run my analysis, and then I can do a sensitivity analysis comparing other methods of dealing with week 53 once I have an outcome I can judge the sensitivity analysis on. Other than that, the data are pretty clean already, and I shouldn't have to create any variables to analyze.
 
-As a note: 5 of the 28 years of data had 53 weeks
+As a note: 5 of the 28 years of data had 53 weeks, with the final reduced dataset only have 3 years with 53rd weeks that were removed.
 \color{black}
 
 (c) Provide a source for your data
