@@ -260,7 +260,7 @@ ili_pe_ts <- ts(
 )
 ```
 
-The full history dataset covers flu seasons 2005-06 through 2024-25 ($\text{N}_{CI} = $`r nrow(ili_fh)`, $\text{S}_{CI} = $`r n_distinct(ili_fh$season_label)`), the pre-pandemic dataset covers flu seasons 2005-06 through 2018-19 ($\text{N}_{CE} = $ `r nrow(ili_pp)`, $\text{S}_{CE} = $`r(n_distinct(ili_pp$season_label)`), and the pandemic era dataset covers flu seasons 2019-20 through 2024-25 ($\text{N}_{PE} = $`r(nrow(ili_pe)`, $\text{S}_{PE} = $`r n_distinct(ili_pe$season_label)`). The pandemic era dataset is only used to compare the pre- and post-pandemic trends, but will not be analyzed on its own.
+The full history dataset covers flu seasons 2005-06 through 2024-25 ($\text{N}_{CI} = $`r nrow(ili_fh)`, $\text{S}_{CI} = $`r n_distinct(ili_fh$season_label)`), the pre-pandemic dataset covers flu seasons 2005-06 through 2018-19 ($\text{N}_{CE} = $ `r nrow(ili_pp)`, $\text{S}_{CE} = $`r n_distinct(ili_pp$season_label)`), and the pandemic era dataset covers flu seasons 2019-20 through 2024-25 ($\text{N}_{PE} = $`r nrow(ili_pe)`, $\text{S}_{PE} = $`r n_distinct(ili_pe$season_label)`). The pandemic era dataset is only used to compare the pre- and post-pandemic trends, but will not be analyzed on its own.
 
 
 ```{r}
@@ -747,6 +747,15 @@ score_ts_model <- function(fit, dataset, tag , biasadj = TRUE) {
 ```{r}
 #| label: model_seas-naive
 
+# Helper to get correct train/test series and lambda
+get_series <- function(dataset) {
+  if (dataset == "pp") {
+    list(train = train_pp_ts, test = test_pp_ts, lambda = lambda_pp)
+  } else {
+    list(train = train_fh_ts, test = test_fh_ts, lambda = lambda_fh)
+  }
+}
+
 fit_snaive <- function(dataset) {
   s <- get_series(dataset)
   
@@ -766,8 +775,8 @@ fit_fh_snaive <- fit_snaive("fh")
 ```{r}
 #| label: metrics_snaive
 
-metrics_pp_snaive <- score_ts_model(fit_snaive_pp, "pp", "snaive_pp")
-metrics_fh_snaive <- score_ts_model(fit_snaive_fh, "fh", "snaive_fh")
+metrics_pp_snaive <- score_ts_model(fit_pp_snaive, "pp", "snaive_pp")
+metrics_fh_snaive <- score_ts_model(fit_fh_snaive, "fh", "snaive_fh")
 
 metrics_pp_snaive
 metrics_fh_snaive
@@ -794,11 +803,11 @@ fit_fh_hw <- fit_hw("fh")
 ```{r}
 #| label: metrics_hw
 
-metrics_fh_hw <- score_ts_model(fit_fh_hw, "fh", "hw_fh")
 metrics_pp_hw <- score_ts_model(fit_pp_hw, "pp", "hw_pp")
+metrics_fh_hw <- score_ts_model(fit_fh_hw, "fh", "hw_fh")
 
-metrics_fh_hw
 metrics_pp_hw
+metrics_fh_hw
 ```
 
 
@@ -820,14 +829,6 @@ cfg <- tribble(
   "fh",     NA, NA, "fh_auto"
 )
 
-# Helper to get correct train/test series and lambda
-get_series <- function(dataset) {
-  if (dataset == "pp") {
-    list(train = train_pp_ts, test = test_pp_ts, lambda = lambda_pp)
-  } else {
-    list(train = train_fh_ts, test = test_fh_ts, lambda = lambda_fh)
-  }
-}
 
 # Fit SARIMA model for a given model
 fit_model <- function(dataset, d, D, tag) {
