@@ -243,14 +243,28 @@ export_controls <- function(mode = NULL, params = NULL, prefer = c("params", "mo
 #' Wrap save_plot() with default export policy + destination
 #'
 #' Returns a function with the usual signature \code{(plot, name, format, target, ...)}.
-#' The wrapper supplies default values for \code{prompt}, \code{overwrite}, \code{backup},
-#' and \code{compare} from \code{ctrl}, as well as project defaults for \code{target} and
-#' \code{format}.
+#' The wrapper supplies project defaults for \code{target} and \code{format}, and fills in
+#' export-policy defaults (\code{prompt}, \code{overwrite}, \code{backup}, \code{compare})
+#' from \code{ctrl}.
 #'
-#' Importantly, any of \code{prompt/overwrite/backup/compare} that you pass explicitly in
-#' \code{...} will override the defaults from \code{ctrl}. This makes it safe to use a
-#' project-wide export mode (e.g., \code{"export_new_only"}) while still forcing a one-off
-#' overwrite or backup behavior in a specific chunk.
+#' This wrapper is designed to be "Quarto-friendly": when called from inside a knitr/Quarto
+#' chunk, it will also default \code{width} and \code{height} to match the current chunk's
+#' figure settings when those arguments are not supplied. It uses \code{fig.width} plus
+#' either \code{fig.height} (if set) or \code{fig.asp} (computes \code{height = width * asp})
+#' from the current chunk, falling back to global chunk defaults when needed.
+#'
+#' For raster outputs (e.g., PNG), the wrapper can also inherit \code{dpi} from the current
+#' chunk options when \code{dpi} is not supplied. Vector formats (e.g., SVG/PDF) ignore DPI.
+#'
+#' Importantly, any of \code{prompt}, \code{overwrite}, \code{backup}, \code{compare},
+#' \code{width}, \code{height}, or \code{dpi} passed explicitly in \code{...} will override
+#' the defaults injected by the wrapper. This makes it safe to use a project-wide export
+#' mode (e.g., \code{"export_new_only"}) while still forcing one-off behavior in a specific
+#' chunk (e.g., overwriting a figure after changing its aspect ratio).
+#'
+#' If the wrapper is used outside a knitr/Quarto context (e.g., running in the console),
+#' chunk-derived defaults may not be available; in that case, \code{save_plot_fun}'s own
+#' defaults are used.
 #'
 #' @param save_plot_fun A save_plot-like function.
 #' @param ctrl Controls from [export_controls()].
@@ -258,10 +272,42 @@ export_controls <- function(mode = NULL, params = NULL, prefer = c("params", "mo
 #' @param default_format Default format vector (e.g., \code{c("png","svg")}).
 #'
 #' @return A wrapped \code{save_plot} function with the same calling convention.
+#' \preformatted{
+#' # Use chunk size automatically
+#' save_plot(p, "my_plot")
+#'
+#' # One-off override (overwrite just this plot)
+#' save_plot(p, "my_plot", overwrite = TRUE, backup = FALSE)
+#' }
+
 apply_save_plot_defaults <- function(save_plot_fun, ctrl,
                                      default_target = "output/figures",
                                      default_format = "png") {
   force(save_plot_fun); force(ctrl); force(default_target); force(default_format)
+  
+  # Helper: try to read the "current chunk" size; fall back to NULLs if unavailable
+  chunk_fig_dims <- function() {
+    # opts_current is most specific (current chunk); opts_chunk is global defaults
+    get_opt <- function(name) {
+      val <- NULL
+      if (requireNamespace("knitr", quietly = TRUE)) {
+        val <- knitr::opts_current$get(name)
+        if (is.null(val)) val <- knitr::opts_chunk$get(name)
+      }
+      val
+    }
+    
+    w <- get_opt("fig.width")
+    h <- get_opt("fig.height")
+    asp <- get_opt("fig.asp")
+    
+    # If height isn't set but aspect ratio is, compute it
+    if (is.null(h) && !is.null(w) && !is.null(asp)) {
+      h <- w * asp
+    }
+    
+    list(width = w, height = h)
+  }
   
   function(plot, name,
            format = default_format,
@@ -270,11 +316,27 @@ apply_save_plot_defaults <- function(save_plot_fun, ctrl,
     
     dots <- list(...)
     
-    # Only set defaults if the caller didn't supply them
+    # Defaults from ctrl (caller can override)
     if (!"prompt"    %in% names(dots)) dots$prompt    <- ctrl$prompt
     if (!"overwrite" %in% names(dots)) dots$overwrite <- ctrl$overwrite
     if (!"backup"    %in% names(dots)) dots$backup    <- ctrl$backup
     if (!"compare"   %in% names(dots)) dots$compare   <- ctrl$compare
+    
+    # Defaults from current chunk size (caller can override)
+    if (!("width" %in% names(dots)) || !("height" %in% names(dots))) {
+      dims <- chunk_fig_dims()
+      if (!("width"  %in% names(dots)) && !is.null(dims$width))  dots$width  <- dims$width
+      if (!("height" %in% names(dots)) && !is.null(dims$height)) dots$height <- dims$height
+    }
+    
+    # Optional: default DPI from knitr if caller didn't supply it
+    if (!"dpi" %in% names(dots)) {
+      if (requireNamespace("knitr", quietly = TRUE)) {
+        dpi <- knitr::opts_current$get("dpi")
+        if (is.null(dpi)) dpi <- knitr::opts_chunk$get("dpi")
+        if (!is.null(dpi)) dots$dpi <- dpi
+      }
+    }
     
     do.call(
       save_plot_fun,
@@ -282,6 +344,7 @@ apply_save_plot_defaults <- function(save_plot_fun, ctrl,
     )
   }
 }
+
 
 #' Conditionally save an R object to disk (tables, models, etc.)
 #'
