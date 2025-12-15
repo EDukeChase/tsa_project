@@ -242,16 +242,22 @@ export_controls <- function(mode = NULL, params = NULL, prefer = c("params", "mo
 
 #' Wrap save_plot() with default export policy + destination
 #'
-#' Returns a function with the usual signature \code{(plot, name, format, target, ...)}
-#' but automatically injects \code{prompt/overwrite/backup/compare} from \code{ctrl}, and
-#' provides project defaults for \code{target} and \code{format}.
+#' Returns a function with the usual signature \code{(plot, name, format, target, ...)}.
+#' The wrapper supplies default values for \code{prompt}, \code{overwrite}, \code{backup},
+#' and \code{compare} from \code{ctrl}, as well as project defaults for \code{target} and
+#' \code{format}.
+#'
+#' Importantly, any of \code{prompt/overwrite/backup/compare} that you pass explicitly in
+#' \code{...} will override the defaults from \code{ctrl}. This makes it safe to use a
+#' project-wide export mode (e.g., \code{"export_new_only"}) while still forcing a one-off
+#' overwrite or backup behavior in a specific chunk.
 #'
 #' @param save_plot_fun A save_plot-like function.
 #' @param ctrl Controls from [export_controls()].
 #' @param default_target Default output folder.
 #' @param default_format Default format vector (e.g., \code{c("png","svg")}).
 #'
-#' @return A wrapped save_plot function.
+#' @return A wrapped \code{save_plot} function with the same calling convention.
 apply_save_plot_defaults <- function(save_plot_fun, ctrl,
                                      default_target = "output/figures",
                                      default_format = "png") {
@@ -261,13 +267,18 @@ apply_save_plot_defaults <- function(save_plot_fun, ctrl,
            format = default_format,
            target = default_target,
            ...) {
-    save_plot_fun(
-      plot, name = name, format = format, target = target,
-      prompt    = ctrl$prompt,
-      overwrite = ctrl$overwrite,
-      backup    = ctrl$backup,
-      compare   = ctrl$compare,
-      ...
+    
+    dots <- list(...)
+    
+    # Only set defaults if the caller didn't supply them
+    if (!"prompt"    %in% names(dots)) dots$prompt    <- ctrl$prompt
+    if (!"overwrite" %in% names(dots)) dots$overwrite <- ctrl$overwrite
+    if (!"backup"    %in% names(dots)) dots$backup    <- ctrl$backup
+    if (!"compare"   %in% names(dots)) dots$compare   <- ctrl$compare
+    
+    do.call(
+      save_plot_fun,
+      c(list(plot = plot, name = name, format = format, target = target), dots)
     )
   }
 }
