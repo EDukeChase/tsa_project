@@ -23,8 +23,9 @@ knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,
-  fig.width = 8,
+  fig.width = 7,
   fig.asp = 0.618,
+  dpi = 300,
   fig.align = 'center',
   comment = "#>"
 )

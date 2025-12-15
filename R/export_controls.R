@@ -287,7 +287,6 @@ apply_save_plot_defaults <- function(save_plot_fun, ctrl,
   
   # Helper: try to read the "current chunk" size; fall back to NULLs if unavailable
   chunk_fig_dims <- function() {
-    # opts_current is most specific (current chunk); opts_chunk is global defaults
     get_opt <- function(name) {
       val <- NULL
       if (requireNamespace("knitr", quietly = TRUE)) {
@@ -297,11 +296,11 @@ apply_save_plot_defaults <- function(save_plot_fun, ctrl,
       val
     }
     
-    w <- get_opt("fig.width")
-    h <- get_opt("fig.height")
-    asp <- get_opt("fig.asp")
+    # Try knitr-style names first, then Quarto-style hyphen names
+    w   <- get_opt("fig.width");  if (is.null(w))   w   <- get_opt("fig-width")
+    h   <- get_opt("fig.height"); if (is.null(h))   h   <- get_opt("fig-height")
+    asp <- get_opt("fig.asp");    if (is.null(asp)) asp <- get_opt("fig-asp")
     
-    # If height isn't set but aspect ratio is, compute it
     if (is.null(h) && !is.null(w) && !is.null(asp)) {
       h <- w * asp
     }
