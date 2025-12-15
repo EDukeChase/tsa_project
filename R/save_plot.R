@@ -55,12 +55,19 @@
 save_plot <- function(plot, name, format = "png", target = ".",
                       width = 7, height = 5, units = "in", dpi = 300,
                       prompt = interactive(),
-                      compare = TRUE, create_dir = TRUE) {
+                      compare = TRUE, create_dir = TRUE,
+                      overwrite = FALSE, backup = TRUE) {
   # Normalize arguments
   format <- tolower(format)
   format <- sub("^\\.", "", format)
   stopifnot(is.character(name), length(name) == 1, nzchar(name))
   stopifnot(is.character(format), length(format) >= 1)
+  
+  stopifnot(is.logical(prompt), length(prompt) == 1)
+  stopifnot(is.logical(compare), length(compare) == 1)
+  stopifnot(is.logical(create_dir), length(create_dir) == 1)
+  stopifnot(is.logical(overwrite), length(overwrite) == 1)
+  stopifnot(is.logical(backup), length(backup) == 1)
   
   # Set target folder
   out_dir <- if (is.null(target) || target == "" || target == ".") {
@@ -78,62 +85,49 @@ save_plot <- function(plot, name, format = "png", target = ".",
   
   # Create a drawer
   expr <- substitute(plot)
-  # If user passed a variable (like "p") or an object, evaluate it
-  # Assume that if it's NULL the plot was just drawn and capture it
+  
   if (!is.call(expr)) {
     obj <- eval(expr, parent.frame())
     
     if (is.null(obj)) {
-      if (grDevices::dev.cur() == 1L) stop ("No active graphics device to capture from.")
-      obj <- recordPlot() # Capture current plot before opening file device
+      if (grDevices::dev.cur() == 1L) stop("No active graphics device to capture from.")
+      obj <- grDevices::recordPlot()
     }
     
     plot_obj <- obj
     draw <- if (inherits(plot_obj, "ggplot")) {
       function() print(plot_obj)
     } else if (inherits(plot_obj, "recordedplot")) {
-      function() replayPlot(plot_obj)
+      function() grDevices::replayPlot(plot_obj)
     } else if (is.function(plot_obj)) {
       plot_obj
     } else {
       stop("Unsupported plot type. Supply ggplot/recordedplot/function, or an expression like plot(x,y).")
     }
   } else {
-    # Expression mode: evaluate the expression INSIDE the output device.
     draw <- function() {
       val <- eval(expr, parent.frame())
       
       if (inherits(val, "ggplot")) {
         print(val)
       } else if (inherits(val, "recordedplot")) {
-        replayPlot(val)
+        grDevices::replayPlot(val)
       } else if (is.function(val)) {
         val()
       } else {
-        # Most base plots: val is NULL because the expression drew the plot already.
         invisible(NULL)
       }
     }
   }
   
-  # Helper for timestamps
   file_time_tag <- function(path, fmt = "%Y%m%d%H%M") {
     if (!file.exists(path)) return(format(Sys.time(), fmt))
     
     info <- file.info(path)
-    
-    if (!is.na(info$mtime)) {
-      t <- info$mtime
-    } else if (!is.na(info$ctime)) {
-      t <- info$ctime
-    } else {
-      t <- Sys.time()
-    }
-    
+    t <- if (!is.na(info$mtime)) info$mtime else if (!is.na(info$ctime)) info$ctime else Sys.time()
     format(t, fmt)
   }
   
-  # Helper to open a graphics device for the given format
   open_device <- function(fmt, filename) {
     fmt <- tolower(fmt)
     if (fmt == "png") {
@@ -149,7 +143,6 @@ save_plot <- function(plot, name, format = "png", target = ".",
     }
   }
   
-  # Helper to render the plot to a file & close device
   render_to_file <- function(fmt, filename) {
     open_device(fmt, filename)
     on.exit(grDevices::dev.off(), add = TRUE)
@@ -157,10 +150,8 @@ save_plot <- function(plot, name, format = "png", target = ".",
     invisible(filename)
   }
   
-  # Helper to get name string
   md5 <- function(path) unname(tools::md5sum(path))
   
-  # Helper to prompt for instructions if file exists
   interactive_choice <- function(path) {
     cat("\nFile exists:\n  ", path, "\n", sep = "")
     ans <- tolower(trimws(readline("Choose: [o]verwrite, [r]ename existing, [s]kip: ")))
@@ -170,7 +161,6 @@ save_plot <- function(plot, name, format = "png", target = ".",
     else "skip"
   }
   
-  # Main loop over formats
   saved_paths <- character(0)
   
   for (fmt in format) {
@@ -185,18 +175,18 @@ save_plot <- function(plot, name, format = "png", target = ".",
         
         if (action == "skip") {
           unlink(tmp_path)
+          saved_paths <- c(saved_paths, final_path)
           next
         }
         
         if (action == "rename") {
-          backup <- file.path(out_dir, paste0(name, "_", file_time_tag(final_path), ".", fmt))
-          file.rename(final_path, backup)
+          backup_path <- file.path(out_dir, paste0(name, "_", file_time_tag(final_path), ".", fmt))
+          file.rename(final_path, backup_path)
         }
-        # Overwrite just falls through
+        # overwrite just falls through (keep final_path, then replace)
       } else {
-        # non-interactive behavior
+        # non-interactive / prompt disabled behavior
         if (compare) {
-          # Note that this is a byte level compare and may differ due to metadata in some formats
           same <- identical(md5(tmp_path), md5(final_path))
           if (same) {
             unlink(tmp_path)
@@ -204,13 +194,24 @@ save_plot <- function(plot, name, format = "png", target = ".",
             next
           }
         }
-        backup <- file.path(out_dir, paste0(name, "_", file_time_tag(final_path), ".", fmt))
-        file.rename(final_path, backup)
+        
+        if (overwrite) {
+          unlink(final_path)
+        } else if (backup) {
+          backup_path <- file.path(out_dir, paste0(name, "_", file_time_tag(final_path), ".", fmt))
+          file.rename(final_path, backup_path)
+        } else {
+          # neither overwrite nor backup: keep existing (skip)
+          unlink(tmp_path)
+          saved_paths <- c(saved_paths, final_path)
+          next
+        }
       }
     }
     
     file.rename(tmp_path, final_path)
     saved_paths <- c(saved_paths, final_path)
   }
+  
   invisible(saved_paths)
 }
